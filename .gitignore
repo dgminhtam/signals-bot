@@ -21,7 +21,7 @@ env/
 logs/
 
 # IDES
-.vscode/
+# .vscode/
 .idea/
 
 # OS

@@ -1,0 +1,34 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Run Main Analysis",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/run_analysis.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Python: Debug RSS Feed",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/debug_rss.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Test Chart Generator",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/charter.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Run Test Flow",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/test_flow.py",
+            "console": "integratedTerminal"
+        }
+    ]
+}
