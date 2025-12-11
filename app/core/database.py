@@ -146,6 +146,31 @@ def get_latest_report() -> Optional[Dict[str, Any]]:
         logger.error(f"Lỗi lấy báo cáo mới nhất: {e}")
         return None
 
+def get_unalerted_news(lookback_minutes: int = 30) -> List[Dict[str, Any]]:
+    """
+    Lấy các bài viết MỚI trong khoảng thời gian gầy đây (lookback_minutes) 
+    mà CHƯA được gửi Alert (is_alerted = 0).
+    """
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # SQLite dùng strftime để tính thời gian
+            # 'now', f'-{lookback_minutes} minutes'
+            
+            c.execute('''
+                SELECT id, title, content, published, source 
+                FROM articles 
+                WHERE is_alerted = 0 
+                AND created_at >= datetime('now', ?)
+                ORDER BY created_at DESC
+            ''', (f'-{lookback_minutes} minutes',))
+            
+            rows = c.fetchall()
+            return [dict(row) for row in rows]
+    except Exception as e:
+        logger.error(f"Lỗi lấy tin chưa alert: {e}")
+        return []
+
 def mark_article_alerted(id: str) -> None:
     """Đánh dấu bài viết đã được gửi Alert"""
     try:

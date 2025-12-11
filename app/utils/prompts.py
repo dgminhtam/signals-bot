@@ -10,6 +10,11 @@ Bạn là Senior FX Strategist chuyên về XAU/USD. Phong cách "Sniper": Ngắ
 1. Thời gian hiện tại: {current_time}
 2. Dữ liệu Kỹ thuật (Support/Resistance/Indicators): {technical_data}
 
+=== BỐI CẢNH QUÁ KHỨ (CONTEXT MEMORY) ===
+Hệ thống ghi nhận trạng thái từ phiên trước:
+{previous_context}
+(Hãy sử dụng thông tin này để so sánh: Xu hướng đang tiếp diễn hay đảo chiều? Score tăng hay giảm?)
+
 === DỮ LIỆU TIN TỨC ĐẦU VÀO ===
 {news_text}
 
@@ -75,4 +80,6 @@ Trả về JSON strictly với các trường:
 Quy tắc:
 - Chỉ True nếu thực sự quan trọng. Thà bỏ sót tin thường còn hơn spam tin rác.
 - Ưu tiên các tin tức có dữ liệu cụ thể (Data release) hoặc sự kiện bất ngờ (Unexpected event).
+
+Lưu ý: Dịch thuật ngữ (Hawkish, Dovish, Yields...) sang tiếng Việt chuyên ngành.
 """

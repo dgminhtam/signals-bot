@@ -104,12 +104,18 @@ def main():
         # 3. GỌI AI PHÂN TÍCH
         logger.info("🤖 ĐANG GỬI DỮ LIỆU SANG AI...")
         
-        # OLD: last_report = database.get_latest_report()
-        # NEW: Lấy dữ liệu kỹ thuật thực tế để AI phân tích chuẩn hơn
+        # Context Memory: Lấy báo cáo phiên trước để AI so sánh
+        last_report = database.get_latest_report()
+        if last_report:
+            logger.info(f"   + Tìm thấy Context phiên trước: {last_report.get('trend')} (Score: {last_report.get('sentiment_score')})")
+        else:
+            logger.info("   + Không tìm thấy báo cáo cũ (Cold Start).")
+
+        # Lấy dữ liệu kỹ thuật thực tế để AI phân tích chuẩn hơn
         technical_data = charter.get_technical_analysis()
         logger.info(f"   + Context Kỹ thuật: {technical_data.strip()[:50]}...")
 
-        analysis_result = ai_engine.analyze_market(articles, technical_data)
+        analysis_result = ai_engine.analyze_market(articles, technical_data, last_report)
 
         if analysis_result:
             logger.info("✅ AI PHÂN TÍCH THÀNH CÔNG!")

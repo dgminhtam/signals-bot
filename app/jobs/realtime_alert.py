@@ -15,16 +15,21 @@ def main():
     try:
         logger.info("⚡ [ALERT WORKER] BẮT ĐẦU QUÉT TIN NÓNG...")
         
-        # 1. Quét tin trong 20 phút gần nhất (Gối đầu 5 phút cho chắc)
-        # Scheduler chạy 15p/lần -> Quét 20p là hợp lý
-        # Uses news_crawler service now
-        recent_articles = news_crawler.get_gold_news(lookback_minutes=20)
+        # 1. Trigger Crawler để đảm bảo DB có tin mới nhất
+        # Crawler sẽ tự động lưu tin mới vào DB (nếu có)
+        # Chúng ta KHÔNG dùng giá trị trả về của crawler nữa, mà query DB
+        # để đảm bảo cả những tin vừa scan ở bước khác cũng được tính.
+        news_crawler.get_gold_news(lookback_minutes=20)
         
+        # 2. Lấy danh sách tin trong 20 phút qua mà CHƯA Alert
+        recent_articles = database.get_unalerted_news(lookback_minutes=20)
+
         if not recent_articles:
-            logger.info("   -> Không có tin mới trong 20 phút qua.")
+            logger.info("   -> Không có tin mới chưa xử lý trong 20 phút qua.")
+            logger.info("⚡ [ALERT WORKER] HOÀN TẤT.")
             return
 
-        logger.info(f"   -> Tìm thấy {len(recent_articles)} tin mới. Đang kiểm tra độ Hot...")
+        logger.info(f"   -> Tìm thấy {len(recent_articles)} tin chưa Alert. Đang checking...")
 
         for article in recent_articles:
             # 2. Check Breaking bằng AI
@@ -38,17 +43,15 @@ def main():
             headline = analysis.get('headline', 'Breaking News')
             
             # Logic override: Nếu tiêu đề chứa từ khóa cực mạnh, force Breaking luôn
-            # (Phòng trường hợp AI lúc đó ngáo, hoặc muốn bypass logic AI)
             urgent_keywords = ["fed rate", "war", "nuclear", "tăng lãi suất", "chiến tranh"]
             if any(k in article['title'].lower() for k in urgent_keywords):
                 is_breaking = True
-                if score == 0: score = -5 # Điểm tạm
+                if score == 0: score = -5 
 
             if is_breaking:
-                logger.info(f"   🔥 BREAKING NEWS PHÁT HIỆN: {article['title']}")
+                logger.info(f"   🔥 BREAKING NEWS: {article['title']}")
                 
                 # 3. Gửi ngay Telegram
-                # Xác định icon Sentiment
                 trend_icon = "🟢" if score > 0 else "🔴" if score < 0 else "🟡"
                 trend_text = "BULLISH" if score > 0 else "BEARISH" if score < 0 else "NEUTRAL"
                 
@@ -68,11 +71,17 @@ def main():
 """
                 telegram_bot.send_message(message)
                 
-                # 4. Đánh dấu đã Alert để Daily Report biết (nhưng vẫn giữ status NEW)
+                # 4. Đánh dấu đã Alert
                 database.mark_article_alerted(article['id'])
                 
             else:
-                logger.info(f"   -> Tin thường: {article['title']} (Score: {score})")
+                logger.info(f"   -> Tin thường (Skip): {article['title']} (Score: {score})")
+                
+                # OPTIONAL: Nếu tin quá nhạt, có thể mark alerted luôn để lần sau k check lại?
+                # Nhưng logic hiện tại chỉ lấy tin trong 20p, nên sau 20p nó tự trôi.
+                # Tuy nhiên, để tiết kiệm tiền AI, ta có thể mark luôn là 0 (đã check) nhưng k gửi?
+                # Hiện tại giữ nguyên (check lại mỗi lần cũng được, vì window ngắn 20p)
+                pass
 
         logger.info("⚡ [ALERT WORKER] HOÀN TẤT.")
 

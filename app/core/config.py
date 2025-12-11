@@ -12,7 +12,11 @@ LOG_FILE = "app.log"
 IMAGES_DIR = "images"
 
 # --- API KEYS ---
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# --- API KEYS ---
+# Hỗ trợ nhiều key cách nhau bởi dấu phẩy để rotate
+_keys_str = os.getenv("GEMINI_API_KEY", "")
+GEMINI_API_KEYS = [k.strip() for k in _keys_str.split(',') if k.strip()]
+GEMINI_API_KEY = GEMINI_API_KEYS[0] if GEMINI_API_KEYS else None
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
@@ -25,8 +29,7 @@ KEYWORDS_CORRELATION = [
     r"CPI", r"PPI", r"NFP", r"GDP"
 ]
 
-RSS_SOURCES = [ 
-    {"name": "Google News (Gold)", "url": "https://news.google.com/rss/search?q=XAUUSD+Gold+Price+Analysis&hl=en-US&gl=US&ceid=US:en"},
+RSS_SOURCES = [
     {"name": "CNBC World", "url": "https://www.cnbc.com/id/100727362/device/rss/rss.html"}
 ]
 
