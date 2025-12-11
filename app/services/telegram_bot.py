@@ -1,9 +1,9 @@
-# telegram_publisher.py
+# telegram_bot.py
 import os
 import asyncio
 from telegram import Bot, InputMediaPhoto
 from typing import List, Optional
-import config # Import config
+from app.core import config # Updated import
 
 # Load biến môi trường từ config
 TELEGRAM_TOKEN = config.TELEGRAM_TOKEN
@@ -57,3 +57,7 @@ def run_sending(content: str, images: List[str]) -> None:
         asyncio.run(send_report_to_telegram(content, images))
     except Exception as e:
         logger.error(f"Lỗi khởi chạy Asyncio: {e}")
+
+def send_message(content: str) -> None:
+    """Simple wrapper for sending text only"""
+    run_sending(content, [])

@@ -1,12 +1,12 @@
-import database
-import ai_engine
-import charter
-import telegram_publisher
 import json
 import os
 import datetime
 from typing import Dict, Any
-import config # Import config
+from app.core import database
+from app.services import ai_engine
+from app.services import charter
+from app.services import telegram_bot
+from app.core import config 
 
 logger = config.logger
 
@@ -104,8 +104,12 @@ def main():
         # 3. GỌI AI PHÂN TÍCH
         logger.info("🤖 ĐANG GỬI DỮ LIỆU SANG AI...")
         
-        last_report = database.get_latest_report()
-        analysis_result = ai_engine.analyze_market(articles, last_report)
+        # OLD: last_report = database.get_latest_report()
+        # NEW: Lấy dữ liệu kỹ thuật thực tế để AI phân tích chuẩn hơn
+        technical_data = charter.get_technical_analysis()
+        logger.info(f"   + Context Kỹ thuật: {technical_data.strip()[:50]}...")
+
+        analysis_result = ai_engine.analyze_market(articles, technical_data)
 
         if analysis_result:
             logger.info("✅ AI PHÂN TÍCH THÀNH CÔNG!")
@@ -126,7 +130,7 @@ def main():
             logger.info("🚀 KÍCH HOẠT TELEGRAM BOT...")
             
             final_message = format_telegram_message(analysis_result)
-            telegram_publisher.run_sending(final_message, image_list)
+            telegram_bot.run_sending(final_message, image_list)
             
             logger.info("-" * 50)
             logger.info("🎉 QUY TRÌNH HOÀN TẤT!")

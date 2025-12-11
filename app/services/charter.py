@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 import os
 from typing import Tuple, Dict, Optional
-import config # Import config
+from app.core import config # Updated import
 
 logger = config.logger
 IMAGES_DIR = config.IMAGES_DIR
@@ -142,5 +142,65 @@ def draw_price_chart(symbol: str = "GC=F") -> Optional[str]:
         logger.error(f"❌ Lỗi vẽ chart: {e}")
         return None
 
+def get_technical_analysis(symbol: str = "GC=F") -> str:
+    """
+    Lấy dữ liệu kỹ thuật tóm tắt để gửi cho AI Engine.
+    Returns: String mô tả RSI, Trend, Fibo Levels.
+    """
+    try:
+        # Lấy dữ liệu H1 trong 2 ngày
+        df = yf.download(symbol, period="2d", interval="1h", progress=False, auto_adjust=True)
+        
+        if df.empty: return "Không lấy được dữ liệu kỹ thuật."
+        
+        # Fix MultiIndex
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+            
+        current_price = df['Close'].iloc[-1]
+        
+        # 1. Tính RSI (14)
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
+        current_rsi = rsi.iloc[-1]
+        
+        # RSI đánh giá
+        rsi_status = "Trung tính"
+        if current_rsi > 70: rsi_status = "QUÁ MUA (Overbought) - Cẩn thận đảo chiều giảm"
+        elif current_rsi < 30: rsi_status = "QUÁ BÁN (Oversold) - Cẩn thận đảo chiều tăng"
+        
+        # 2. Tính Trend (theo EMA 20)
+        ema20 = df['Close'].ewm(span=20, adjust=False).mean().iloc[-1]
+        trend_status = "TĂNG (Giá trên EMA20)" if current_price > ema20 else "GIẢM (Giá dưới EMA20)"
+        
+        # 3. Fibo Levels (Sử dụng hàm có sẵn)
+        fibo_levels, trend_fibo = calculate_fibonacci_levels(df)
+        
+        # Tìm mức Fibo gần nhất
+        closest_level = "N/A"
+        min_dist = float('inf')
+        for name, price in fibo_levels.items():
+            dist = abs(current_price - price)
+            if dist < min_dist:
+                min_dist = dist
+                closest_level = f"{name} ({price:.1f})"
+
+        # Tổng hợp text
+        summary = f"""
+        - Giá hiện tại: {current_price:.1f}
+        - Xu hướng H1: {trend_status} | Trend Fibo: {trend_fibo}
+        - RSI (14): {current_rsi:.1f} ({rsi_status})
+        - Hỗ trợ/Kháng cự gần nhất (Fibo): {closest_level}
+        """
+        return summary
+        
+    except Exception as e:
+        logger.error(f"❌ Lỗi lấy data kỹ thuật: {e}")
+        return "Lỗi tính toán dữ liệu kỹ thuật."
+
 if __name__ == "__main__":
     draw_price_chart()
+    print(get_technical_analysis())

@@ -27,9 +27,6 @@ KEYWORDS_CORRELATION = [
 
 RSS_SOURCES = [ 
     {"name": "Google News (Gold)", "url": "https://news.google.com/rss/search?q=XAUUSD+Gold+Price+Analysis&hl=en-US&gl=US&ceid=US:en"},
-    {"name": "FXStreet", "url": "https://www.fxstreet.com/rss/news"},
-    {"name": "DailyFX", "url": "https://www.dailyfx.com/feeds/market-news"},
-    {"name": "CoinTelegraph (Gold)", "url": "https://cointelegraph.com/rss/tag/gold"},
     {"name": "CNBC World", "url": "https://www.cnbc.com/id/100727362/device/rss/rss.html"}
 ]
 

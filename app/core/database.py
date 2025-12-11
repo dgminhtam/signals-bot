@@ -1,25 +1,12 @@
-import feedparser
-import requests
-from bs4 import BeautifulSoup
-from datetime import datetime, timedelta, timezone
-from dateutil import parser
-import re
-import time
-import json
 import sqlite3
 from contextlib import contextmanager
 from typing import List, Dict, Optional, Any
-import config # Import config module
+import json
+import logging
+from app.core import config # Updated import
 
-# --- CẤU HÌNH ---
-# Sử dụng biến từ config.py
-DB_NAME = config.DB_NAME
-KEYWORDS = {
-    "DIRECT": config.KEYWORDS_DIRECT,
-    "CORRELATION": config.KEYWORDS_CORRELATION
-}
-HEADERS = config.HEADERS
 logger = config.logger
+DB_NAME = config.DB_NAME
 
 @contextmanager
 def get_db_connection():
@@ -36,7 +23,6 @@ def get_db_connection():
         if conn:
             conn.close()
 
-# --- PHẦN DATABASE (MỚI) ---
 def init_db() -> None:
     """Khởi tạo bảng nếu chưa có"""
     try:
@@ -52,9 +38,17 @@ def init_db() -> None:
                     content TEXT,              -- Nội dung full
                     keywords TEXT,             -- Lưu list keyword dạng string
                     status TEXT DEFAULT 'NEW', -- NEW: Chưa AI xử lý, PROCESSED: Đã xong
+                    is_alerted INTEGER DEFAULT 0, -- 0: Chưa alert, 1: Đã alert (Breaking News)
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
+            
+            # Migration: Ensure is_alerted column exists (for existing DB)
+            try:
+                c.execute("ALTER TABLE articles ADD COLUMN is_alerted INTEGER DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass # Column already exists
+
             # Tạo bảng reports
             c.execute('''
                 CREATE TABLE IF NOT EXISTS reports (
@@ -104,124 +98,6 @@ def save_to_db(item: Dict[str, Any]) -> bool:
         logger.error(f"Lỗi lưu DB bài viết {item.get('id')}: {e}")
         return False
 
-# --- CÁC HÀM CRAWL/PARSE ---
-def clean_html(raw_html: str) -> str:
-    cleanr = re.compile('<.*?>')
-    return re.sub(cleanr, '', raw_html).strip()
-
-def check_keywords(text: str) -> List[str]:
-    found_keywords = []
-    text_lower = text.lower()
-    all_keywords = KEYWORDS["DIRECT"] + KEYWORDS["CORRELATION"]
-    for kw in all_keywords:
-        pattern = r"\b" + re.escape(kw.lower()) + r"\b"
-        if re.search(pattern, text_lower):
-            found_keywords.append(kw)
-    return list(set(found_keywords)) # Loại bỏ keyword trùng lặp
-
-def get_full_content(url: str) -> str:
-    try:
-        response = requests.get(url, headers=HEADERS, timeout=10)
-        if response.status_code != 200: 
-            return "Lỗi truy cập (Chặn Bot)"
-        
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
-        if "kitco.com" in url:
-            paragraphs = soup.select("div.article-body p")
-        elif "investing.com" in url:
-            paragraphs = soup.select("div.WYSIWYG p")
-        else:
-            paragraphs = soup.find_all('p')
-            
-        full_text = "\\n\\n".join([p.get_text().strip() for p in paragraphs])
-        return full_text if len(full_text) > 200 else "Nội dung quá ngắn/bị ẩn."
-    except Exception as e:
-        return f"Lỗi cào dữ liệu: {e}"
-
-def get_rss_feed_data(url: str):
-    try:
-        response = requests.get(url, headers=HEADERS, timeout=30)
-        response.raise_for_status()
-        return feedparser.parse(response.content)
-    except Exception as e:
-        logger.error(f"Lỗi tải RSS {url}: {e}")
-        return None
-
-# --- HÀM CHÍNH ---
-def get_gold_news():
-    logger.info(">>> KHỞI TẠO DATABASE...")
-    init_db() # 1. Tạo bảng nếu chưa có
-    
-    logger.info(">>> ĐANG QUÉT TIN TỨC...")
-    now_utc = datetime.now(timezone.utc)
-    time_limit = now_utc - timedelta(hours=24) 
-    
-    new_articles_count = 0
-
-    for source in config.RSS_SOURCES:
-        try:
-            feed = get_rss_feed_data(source["url"])
-            if not feed or not feed.entries:
-                logger.warning(f"-> {source['name']}: Không lấy được dữ liệu.")
-                continue
-
-            logger.info(f"-> {source['name']}: Quét {len(feed.entries)} bài...")
-            
-            for entry in feed.entries:
-                link = entry.get("link", "")
-                
-                # 2. KIỂM TRA TỒN TẠI TRƯỚC
-                if check_article_exists(link):
-                    continue
-
-                # Xử lý ngày tháng
-                published = entry.get("published", entry.get("updated", ""))
-                if not published: continue
-                try:
-                    pub_date = parser.parse(published)
-                    if pub_date.tzinfo is None: pub_date = pub_date.replace(tzinfo=timezone.utc)
-                    if pub_date < time_limit: continue
-                except: continue
-
-                title = entry.get("title", "")
-                summary = clean_html(entry.get("summary", ""))
-                
-                # Check Keyword
-                matched_kws = check_keywords(title + " " + summary)
-                
-                if matched_kws:
-                    logger.info(f"   [+] Tin mới: {title[:50]}...")
-                    
-                    full_content = get_full_content(link)
-                    
-                    news_item = {
-                        "id": link,
-                        "source": source["name"],
-                        "published_at": pub_date.isoformat(),
-                        "title": title,
-                        "keywords": matched_kws,
-                        "url": link,
-                        "content": full_content
-                    }
-                    
-                    # 3. LƯU VÀO DB
-                    save_to_db(news_item)
-                    new_articles_count += 1
-                    time.sleep(1) # Delay nhẹ
-            
-        except Exception as e:
-            logger.error(f"Lỗi nguồn {source['name']}: {e}")
-
-    logger.info("="*60)
-    logger.info(f"✅ HOÀN TẤT! Đã thêm {new_articles_count} bài viết mới vào Database.")
-    logger.info("="*60)
-
-if __name__ == "__main__":
-    get_gold_news()
-
-# --- HÀM PUBLIC CHO NGHIỆP VỤ KHÁC ---
-
 def get_unprocessed_articles() -> List[Dict[str, Any]]:
     """Lấy tất cả bài viết có status = 'NEW'"""
     try:
@@ -269,3 +145,13 @@ def get_latest_report() -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Lỗi lấy báo cáo mới nhất: {e}")
         return None
+
+def mark_article_alerted(id: str) -> None:
+    """Đánh dấu bài viết đã được gửi Alert"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("UPDATE articles SET is_alerted = 1 WHERE id = ?", (id,))
+            conn.commit()
+    except Exception as e:
+        logger.error(f"Lỗi đánh dấu alert: {e}")
