@@ -31,20 +31,22 @@ async def send_report_to_telegram(report_content: str, image_paths: List[str]) -
             # Nếu không có ảnh, chỉ gửi text
             await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=report_content, parse_mode='HTML')
         else:
-            # 2. Tạo Album ảnh
-            # Gửi Album ảnh trước
-            for img_path in valid_images:
-                # Mở file để gửi
-                media_group.append(InputMediaPhoto(media=open(img_path, 'rb')))
-
-            await bot.send_media_group(chat_id=TELEGRAM_CHAT_ID, media=media_group)
-
-            # 3. Gửi nội dung bài báo cáo ngay sau đó
-            # Cắt ngắn nếu quá dài (Telegram max 4096 ký tự cho message)
-            final_content = report_content[:4000] 
+            # 2. Gửi ảnh đầu tiên kèm caption (text phân tích)
+            # Telegram caption max 1024 ký tự, nếu dài hơn sẽ gửi riêng
+            caption_text = report_content[:1024] if len(report_content) <= 1024 else report_content[:1020] + "..."
             
-            # Gửi Text với Parse Mode là HTML (để hiển thị Bold, Italic...)
-            await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=final_content, parse_mode='HTML')
+            with open(valid_images[0], 'rb') as photo:
+                await bot.send_photo(
+                    chat_id=TELEGRAM_CHAT_ID, 
+                    photo=photo,
+                    caption=caption_text,
+                    parse_mode='HTML'
+                )
+            
+            # Nếu text quá dài, gửi phần còn lại
+            if len(report_content) > 1024:
+                remaining_text = report_content[1020:]
+                await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=remaining_text, parse_mode='HTML')
 
         logger.info("✅ Đã gửi thành công lên Telegram!")
 

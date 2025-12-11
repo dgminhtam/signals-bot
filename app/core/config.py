@@ -30,6 +30,7 @@ KEYWORDS_CORRELATION = [
 ]
 
 RSS_SOURCES = [
+    {"name": "Investing.com", "url": "https://www.investing.com/rss/news.rss"},
     {"name": "CNBC World", "url": "https://www.cnbc.com/id/100727362/device/rss/rss.html"}
 ]
 

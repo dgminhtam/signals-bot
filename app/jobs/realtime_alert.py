@@ -65,8 +65,6 @@ def main():
 
 📝 <b>Nội dung chính:</b>
 {article['title']}
-
-<i>AI Quick Alert - Dữ liệu thô chưa qua kiểm chứng kỹ lưỡng.</i>
 #Breaking #XAUUSD
 """
                 telegram_bot.send_message(message)
