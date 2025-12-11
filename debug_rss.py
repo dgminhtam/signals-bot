@@ -81,7 +81,7 @@ def check_filter_logic(entry):
         print(f"   ❌ Keyword Check: FAILED (Keywords: {config.KEYWORDS_DIRECT + config.KEYWORDS_CORRELATION})")
 
 def main():
-    print("=== BẮT ĐẦU DEBUG RSS ===")
+    print("=== BAT DAU DEBUG RSS ===")
     
     # Debug từng nguồn
     for source in config.RSS_SOURCES:

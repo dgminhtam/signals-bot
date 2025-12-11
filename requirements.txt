@@ -1,0 +1,27 @@
+# Dependencies cho Signals Bot - XAU/USD News Analysis
+
+# Core
+feedparser==6.0.11
+requests==2.31.0
+beautifulsoup4==4.12.3
+python-dateutil==2.8.2
+
+# AI & Analysis
+google-generativeai==0.8.3
+
+# Charting
+yfinance==0.2.50
+matplotlib==3.9.3
+mplfinance==0.12.10b0
+
+# Telegram Bot
+python-telegram-bot==22.5
+
+# Database
+# sqlite3 is built-in with Python
+
+# Scheduler
+schedule==1.2.2
+
+# Utilities
+python-dotenv==1.0.1

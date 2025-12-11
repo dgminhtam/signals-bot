@@ -141,9 +141,11 @@ def get_full_content(url: str) -> str:
 
 def get_rss_feed_data(url: str):
     try:
-        response = requests.get(url, headers=HEADERS, timeout=10)
+        response = requests.get(url, headers=HEADERS, timeout=30)
+        response.raise_for_status()
         return feedparser.parse(response.content)
-    except:
+    except Exception as e:
+        logger.error(f"Lỗi tải RSS {url}: {e}")
         return None
 
 # --- HÀM CHÍNH ---
