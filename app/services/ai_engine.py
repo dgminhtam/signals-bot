@@ -1,93 +1,59 @@
-import os
-import json
-import google.generativeai as genai
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from app.core import config 
-from app.utils import prompts 
+import json
+import logging
+from app.core import config
+from app.utils import prompts
+from app.services.ai_base import AIService
+from app.services.gemini_service import GeminiService
+from app.services.openai_service import OpenAIService
+from app.services.groq_service import GroqService
 
 logger = config.logger
 
-# --- KEY ROTATION MANAGER ---
-class MultiKeyManager:
-    def __init__(self, keys: List[str]):
-        self.keys = keys
-        self.current_index = 0
+# --- FACTORY PATTERN ---
+def get_ai_service() -> AIService:
+    provider = config.AI_PROVIDER
+    logger.info(f"🤖 Initializing AI Provider: {provider.upper()}")
     
-    def get_current_key(self) -> str:
-        if not self.keys: return ""
-        return self.keys[self.current_index]
-    
-    def switch_key(self) -> str:
-        if not self.keys: return ""
-        self.current_index = (self.current_index + 1) % len(self.keys)
-        new_key = self.keys[self.current_index]
-        logger.warning(f"🔄 Switching API Key -> ...{new_key[-4:]}")
-        return new_key
+    if provider == "gemini":
+        return GeminiService()
+    elif provider == "openai":
+        return OpenAIService()
+    elif provider == "groq":
+        return GroqService()
+    else:
+        logger.warning(f"⚠️ Unknown provider '{provider}', falling back to Gemini.")
+        return GeminiService()
 
-key_manager = MultiKeyManager(config.GEMINI_API_KEYS)
+# Initialize Service Global
+ai_service = get_ai_service()
 
-# Config ban đầu
-if not key_manager.get_current_key():
-    raise ValueError("❌ Missing GEMINI_API_KEYS in config")
-
-genai.configure(api_key=key_manager.get_current_key())
-
-MODEL_NAME = 'gemini-2.5-flash-lite' 
-
-response_schema = {
-     "type": "OBJECT",
+# --- JSON SCHEMAS ---
+analysis_schema = {
+    "type": "OBJECT",
      "properties": {
-         "headline": {"type": "STRING"},
-         "sentiment_score": {"type": "NUMBER"},
-         "trend": {"type": "STRING"},
-         "bullet_points": {"type": "ARRAY", "items": {"type": "STRING"}},
-         "conclusion": {"type": "STRING"},
+          "reasoning": {"type": "STRING", "description": "Chi tiết quy trình tư duy từng bước (CoT)"},
+          "headline": {"type": "STRING"},
+          "sentiment_score": {"type": "NUMBER"},
+          "trend": {"type": "STRING"},
+          "bullet_points": {"type": "ARRAY", "items": {"type": "STRING"}},
+          "conclusion": {"type": "STRING"},
      },
-     "required": ["headline", "sentiment_score", "trend", "bullet_points", "conclusion"]
+     "required": ["reasoning", "headline", "sentiment_score", "trend", "bullet_points", "conclusion"]
 }
 
-generation_config = {
-    "temperature": 0.4, 
-    "response_mime_type": "application/json",
-    "response_schema": response_schema
+breaking_news_schema = {
+    "type": "OBJECT",
+     "properties": {
+          "is_breaking": {"type": "BOOLEAN"},
+          "score": {"type": "NUMBER"},
+          "headline": {"type": "STRING"}
+     },
+     "required": ["is_breaking", "score", "headline"]
 }
 
-def get_model():
-    """Helper để lấy model (có thể re-init nếu cần)"""
-    try:
-        return genai.GenerativeModel(MODEL_NAME, generation_config=generation_config)
-    except Exception as e:
-        logger.warning(f"⚠️ Fallback to gemini-1.5-pro due to: {e}")
-        return genai.GenerativeModel('gemini-1.5-pro', generation_config=generation_config)
-
-def generate_with_retry(prompt: str, retries: int = 10) -> Optional[str]:
-    """Hàm bọc gọi API với cơ chế Retry & Rotate Key"""
-    attempt = 0
-    while attempt < retries:
-        try:
-            model = get_model()
-            response = model.generate_content(prompt)
-            return response.text
-        except Exception as e:
-            error_msg = str(e).lower()
-            # Check lỗi Quota (429) hoặc lỗi Model quá tải
-            if "429" in error_msg or "quota" in error_msg or "overloaded" in error_msg:
-                logger.warning(f"⚠️ Quota Exceeded / Error: {e}")
-                # Rotate Key
-                new_key = key_manager.switch_key()
-                genai.configure(api_key=new_key)
-                # Chờ xíu cho chắc
-                import time
-                time.sleep(1)
-            else:
-                logger.error(f"❌ Unrecoverable AI Error: {e}")
-                return None
-            
-            attempt += 1
-            
-    logger.error("❌ Hết lượt thử (Retries Exhausted).")
-    return None
+# --- BUSINESS LOGIC FUNCTIONS ---
 
 def analyze_market(
     articles: List[Dict[str, Any]], 
@@ -97,14 +63,30 @@ def analyze_market(
     
     if not articles: return None
 
-    logger.info(f"🤖 AI đang phân tích {len(articles)} bài báo...")
+    logger.info(f"🤖 AI nhận {len(articles)} bài báo...")
+    
+    # 1. Giới hạn số lượng articles
+    MAX_ARTICLES = 10
+    if len(articles) > MAX_ARTICLES:
+        articles_sorted = sorted(
+            articles, 
+            key=lambda x: x.get('published_at', ''), 
+            reverse=True
+        )
+        articles = articles_sorted[:MAX_ARTICLES]
+        logger.info(f"📊 Giới hạn xuống {MAX_ARTICLES} bài mới nhất.")
+    
+    logger.info(f"✅ Phân tích {len(articles)} bài báo...")
 
-    # 1. Chuẩn bị dữ liệu
+    # 2. Chuẩn bị dữ liệu
     news_text = ""
     for i, art in enumerate(articles, 1):
         content = art.get('content', '') or art.get('summary', '') or ''
         content_clean = content.replace('"', "'").replace('\n', ' ').strip()
-        if len(content_clean) > 10000: content_clean = content_clean[:10000] + "..."
+        
+        MAX_CONTENT_LENGTH = 5000
+        if len(content_clean) > MAX_CONTENT_LENGTH: 
+            content_clean = content_clean[:MAX_CONTENT_LENGTH] + "..."
         
         news_text += f"""
         <article id="{i}">
@@ -136,12 +118,12 @@ def analyze_market(
         news_text=news_text
     )
 
-    # 3. Gọi AI với Retry Mechanism
+    # 3. Gọi AI qua Service Factory
     try:
-        response_text = generate_with_retry(prompt)
+        response_text = ai_service.generate_content(prompt, schema=analysis_schema)
         if not response_text: return None
         
-        # Xử lý kết quả
+        # Xử lý kết quả JSON
         try:
             result_json = json.loads(response_text)
         except json.JSONDecodeError:
@@ -163,27 +145,24 @@ def analyze_market(
 def check_breaking_news(content: str) -> Optional[Dict[str, Any]]:
     """
     Kiểm tra xem tin tức có phải là BREAKING NEWS không.
-    Trả về: JSON {is_breaking: bool, score: float, headline: str}
     """
     prompt = prompts.BREAKING_NEWS_PROMPT.format(
         content=content[:3000]
     )
     
     try:
-        # Dùng model Flash cho nhanh và rẻ
-        # Gọi qua generate_with_retry
-        response_text = generate_with_retry(prompt)
+        # Sử dụng Breaking News Schema
+        response_text = ai_service.generate_content(prompt, schema=breaking_news_schema)
         if not response_text: return None
-
-        text = response_text.replace("```json", "").replace("```", "").strip()
-        data = json.loads(text)
         
-        # Validate data
-        return {
-            "is_breaking": data.get("is_breaking", False),
-            "score": data.get("score", 0),
-            "headline": data.get("headline", "Breaking News")
-        }
+        try:
+            result_json = json.loads(response_text)
+        except json.JSONDecodeError:
+            clean_text = response_text.replace("```json", "").replace("```", "").strip()
+            result_json = json.loads(clean_text)
+            
+        return result_json
+        
     except Exception as e:
-        logger.error(f"❌ Lỗi Check Breaking News: {e}")
+        logger.error(f"❌ Lỗi Breaking News Check: {e}")
         return None

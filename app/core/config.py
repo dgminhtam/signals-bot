@@ -12,13 +12,28 @@ LOG_FILE = "app.log"
 IMAGES_DIR = "images"
 
 # --- API KEYS ---
-# --- API KEYS ---
 # Hỗ trợ nhiều key cách nhau bởi dấu phẩy để rotate
 _keys_str = os.getenv("GEMINI_API_KEY", "")
 GEMINI_API_KEYS = [k.strip() for k in _keys_str.split(',') if k.strip()]
 GEMINI_API_KEY = GEMINI_API_KEYS[0] if GEMINI_API_KEYS else None
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+# --- AI MODEL CONFIG ---
+# Provider: 'gemini' or 'openai'
+AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini").lower()
+
+# Gemini Config
+GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-2.0-flash-lite")
+GEMINI_FALLBACK_MODEL = "gemini-2.0-flash-lite"
+
+# OpenAI Config
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini")
+
+# Groq Config
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_MODEL_NAME = os.getenv("GROQ_MODEL_NAME", "llama-3.3-70b-versatile")
 
 # --- OTHER SETTINGS ---
 # Danh sách mã chứng khoán / Keyword

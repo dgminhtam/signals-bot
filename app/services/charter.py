@@ -131,33 +131,33 @@ def draw_price_chart(symbol: str = "XAUUSD") -> Optional[str]:
     
     data_source = "Unknown"
     try:
-        # 1. Thử MT5 trước (Primary - Real-time với Indicators)
+        # 1. Thử TradingView trước (Primary - nhanh và ổn định)
         df = None
-        client = MT5DataClient()
-        if client.connect():
-            df = client.get_historical_data(symbol, timeframe="H1", count=80)
-            client.disconnect()
-            
-            if df is not None and not df.empty:
-                data_source = "MT5"
-                logger.info(f"✅ Đã lấy {len(df)} nến từ MT5.")
+        df = get_data_from_tradingview(symbol)
+        if df is not None and not df.empty:
+            data_source = "TradingView"
         
-        # 2. Fallback 1: TradingView
+        # 2. Fallback 1: MT5 (Real-time với Indicators)
         if df is None or df.empty:
-            logger.warning("⚠️ MT5 không khả dụng, chuyển sang TradingView...")
-            df = get_data_from_tradingview(symbol)
-            if df is not None and not df.empty:
-                data_source = "TradingView"
+            logger.warning("⚠️ TradingView không khả dụng, chuyển sang MT5...")
+            client = MT5DataClient()
+            if client.connect():
+                df = client.get_historical_data(symbol, timeframe="H1", count=80)
+                client.disconnect()
+                
+                if df is not None and not df.empty:
+                    data_source = "MT5"
+                    logger.info(f"✅ Đã lấy {len(df)} nến từ MT5.")
         
         # 3. Fallback 2: yfinance (Last resort)
         if df is None or df.empty:
-            logger.warning("⚠️ TradingView không khả dụng, chuyển sang yfinance...")
+            logger.warning("⚠️ MT5 không khả dụng, chuyển sang yfinance...")
             df = get_data_from_yfinance(symbol)
             if df is not None and not df.empty:
                 data_source = "yfinance"
             
         if df is None or df.empty:
-            logger.error("❌ Không thể lấy dữ liệu từ cả 3 nguồn (MT5, TradingView, yfinance).")
+            logger.error("❌ Không thể lấy dữ liệu từ cả 3 nguồn (TradingView, MT5, yfinance).")
             return None
         
         # 4. Tính toán indicators thống nhất bằng pandas-ta

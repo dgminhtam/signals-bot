@@ -25,6 +25,17 @@ Hệ thống ghi nhận trạng thái từ phiên trước:
 3. Kết luận hành động.
 4. Phân tích tổng hợp các nguồn tin trên và kết hợp dữ liệu kỹ thuật (nếu có) để đưa ra chiến lược.
 
+=== HƯỚNG DẪN CHẤM ĐIỂM (SENTIMENT SCORING) ===
+Thang điểm: -10 (Rất tiêu cực cho Vàng) đến +10 (Rất tích cực cho Vàng). 0 là trung lập.
+Ví dụ tham khảo (Few-shot prompting):
+- Score +8 đến +10: Chiến tranh leo thang mạnh / Khủng hoảng kinh tế toàn cầu / Thiên tai lớn.
+- Score +4 đến +7: Fed cắt giảm lãi suất / USD Index giảm mạnh / Dữ liệu kinh tế Mỹ yếu kém (NFP giảm sâu).
+- Score +1 đến +3: Tin đồn có lợi nhẹ / USD giảm nhẹ điều chỉnh / Căng thẳng chính trị nhỏ.
+- Score 0: Thị trường chờ tin lớn (Sideway) / Không có tin tức đáng kể.
+- Score -1 đến -3: Fed giữ lãi suất (Neutral) / USD tăng nhẹ hồi phục.
+- Score -4 đến -7: Fed giữ lãi suất nhưng giọng điệu "Diều hâu" (Hawkish) / CPI/PPI cao hơn dự báo.
+- Score -8 đến -10: Fed tăng lãi suất bất ngờ / Kinh tế Mỹ 'quá nóng' (NFP tăng vọt, Thất nghiệp giảm sâu).
+
 === QUY TRÌNH TƯ DUY (CHAIN OF THOUGHT) ===
 Bước 1: Đọc và Trích xuất. Tìm các từ khóa quan trọng: CPI, Fed, Rate Cut, War, Yields.
 Bước 2: Phân tích Tác động. 
@@ -39,6 +50,7 @@ Bước 3: TỰ KIỂM TRA (SELF-CORRECTION) - QUAN TRỌNG NHẤT:
 
 === YÊU CẦU OUTPUT (JSON Strictly) ===
 Trả về JSON theo schema đã định nghĩa với các lưu ý sau:
+- reasoning: Viết RA quy trình tư duy từng bước (Bước 1, 2, 3 bên trên). Đây là "không gian suy nghĩ" của bạn trước khi đưa ra kết luận. Quan trọng: Phải kiểm tra hallucination trong bước này.
 - headline: < 15 từ, bắt đầu bằng icon (🔥, 🚨, 📉, 📈), tóm tắt tác động mạnh nhất.
 - trend: Chính xác là "BULLISH 🟢", "BEARISH 🔴", hoặc "SIDEWAY 🟡".
 - bullet_points: 3 gạch đầu dòng quan trọng nhất (Nguyên nhân -> Kết quả). Dùng động từ mạnh.
@@ -49,32 +61,25 @@ Lưu ý: Dịch thuật ngữ (Hawkish, Dovish, Yields...) sang tiếng Việt c
 
 BREAKING_NEWS_PROMPT = """
 Bạn là hệ thống cảnh báo rủi ro tài chính (Risk Alert System) cho trader vàng (XAU/USD).
-Đọc tin sau và đánh giá độ khẩn cấp:
+Nhiệm vụ: Đọc tin và phát hiện tin NÓNG (Breaking News) có thể làm giá chạy ngay lập tức.
 
 === TIN TỨC ===
 {content} 
 
-=== QUY TRÌNH TƯ DUY (CHAIN OF THOUGHT) ===
-Bước 1: Đọc và Trích xuất. Tìm các từ khóa quan trọng: CPI, Fed, Rate Cut, War, Yields.
-Bước 2: Phân tích Tác động. 
-- Tin này làm USD tăng hay giảm? -> Suy ra Vàng giảm hay tăng?
-- Đối chiếu với Dữ liệu Kỹ thuật: Tin tức có ủng hộ xu hướng trên biểu đồ không?
+=== TƯ DUY NHANH (FAST TRACK) ===
+1. Scan từ khóa nóng: War, Fed, CPI, NFP, Rate Cut, Explosion, Bankruptcy, Unexpected.
+2. Đánh giá tác động: Tin này có làm USD/Gold biến động mạnh (>10 giá) trong 5-15 phút tới không?
+   - Tin số liệu (CPI, NFP): Có lệch dự báo nhiều không?
+   - Tin sự kiện (War, Fed): Có bất ngờ không?
+   - Tin nhận định/Opinion: BỎ QUA -> is_breaking = False.
 
-Bước 3: TỰ KIỂM TRA (SELF-CORRECTION) - QUAN TRỌNG NHẤT:
-- Rà soát lại bản thảo.
-- Kiểm tra từng con số (Ví dụ: "CPI tăng 0.3%"). Số liệu này có BẮT BUỘC nằm trong phần "Tin tức" bên trên không?
-- Nếu số liệu không có trong input, HÃY XÓA NÓ ĐI. Không được tự bịa ra (No Hallucination).
-- Đảm bảo mức giá trong phần "Conclusion" khớp với "Dữ liệu Kỹ thuật".
-
-=== YÊU CẦU ===
-Trả về JSON strictly với các trường:
-1. "is_breaking": (Boolean) True nếu tin này tác động MẠNH và NGAY LẬP TỨC đến giá Vàng (ví dụ: Chiến tranh, Fed tăng lãi suất bất ngờ, CPI lệch dự báo, Vàng phá cản lớn). False nếu là tin nhận định, tin cũ, hoặc ít tác động.
-2. "score": (Number) Thang điểm từ -10 (Rất xấu cho Vàng) đến +10 (Rất tốt cho Vàng). 0 là trung lập.
-3. "headline": (String) Tiêu đề ngắn gọn, giật gân (dưới 15 từ) để gửi cảnh báo. Bắt đầu bằng icon tương ứng (🔥, 🚨, 📉, 📈).
+=== YÊU CẦU OUTPUT (JSON Strictly) ===
+Trả về JSON với các trường:
+1. "is_breaking": (Boolean) True nếu tin tác động MẠNH và NGAY LẬP TỨC. False nếu bình thường.
+2. "score": (Number) -10 (Bearish mạnh) đến +10 (Bullish mạnh). 0 là trung lập.
+3. "headline": (String) Tiêu đề < 15 từ, bắt đầu bằng icon (🔥, 🚨, 📉, 📈).
 
 Quy tắc:
-- Chỉ True nếu thực sự quan trọng. Thà bỏ sót tin thường còn hơn spam tin rác.
-- Ưu tiên các tin tức có dữ liệu cụ thể (Data release) hoặc sự kiện bất ngờ (Unexpected event).
-
-Lưu ý: Dịch thuật ngữ (Hawkish, Dovish, Yields...) sang tiếng Việt chuyên ngành.
+- Chỉ True nếu thực sự quan trọng (High Impact). Thà bỏ sót tin nhỏ còn hơn spam tin rác.
+- Dịch thuật ngữ sang tiếng Việt chuyên ngành.
 """
