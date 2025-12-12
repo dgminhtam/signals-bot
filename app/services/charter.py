@@ -107,6 +107,42 @@ def get_data_from_yfinance(symbol: str = "XAUUSD", period: str = "5d", interval:
         logger.error(f"❌ Lỗi lấy dữ liệu từ yfinance: {e}")
         return None
 
+def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Tính toán các chỉ báo kỹ thuật sử dụng pandas
+    Áp dụng thống nhất cho tất cả các nguồn dữ liệu
+    """
+    try:
+        # 1. EMA (Exponential Moving Average) - Sử dụng pandas .ewm()
+        df['EMA50'] = df['Close'].ewm(span=50, adjust=False).mean()
+        df['EMA200'] = df['Close'].ewm(span=200, adjust=False).mean()
+        
+        # 2. Support & Resistance (Pivot Points Classic)
+        # Pivot = (High + Low + Close) / 3
+        # Support1 = (2 * Pivot) - High
+        # Resistance1 = (2 * Pivot) - Low
+        
+        pivot = (df['High'] + df['Low'] + df['Close']) / 3
+        df['Support'] = (2 * pivot) - df['High']
+        df['Resistance'] = (2 * pivot) - df['Low']
+        
+        # 3. Smooth S/R bằng moving average để tránh nhiễu
+        df['Support'] = df['Support'].rolling(window=3, min_periods=1).mean()
+        df['Resistance'] = df['Resistance'].rolling(window=3, min_periods=1).mean()
+        
+        # 4. Forward fill NaN values (do EMA cần data đủ dài)
+        df['EMA50'] = df['EMA50'].ffill().bfill()
+        df['EMA200'] = df['EMA200'].ffill().bfill()
+        df['Support'] = df['Support'].ffill().bfill()
+        df['Resistance'] = df['Resistance'].ffill().bfill()
+        
+        logger.info("✅ Đã tính toán indicators (EMA, S/R) bằng pandas.")
+        return df
+        
+    except Exception as e:
+        logger.error(f"❌ Lỗi tính toán indicators: {e}")
+        return df
+
 def draw_price_chart(symbol: str = "XAUUSD") -> Optional[str]:
     logger.info(f"📈 Đang vẽ biểu đồ H1 (Pro Dark Style) cho {symbol}...")
     
@@ -140,6 +176,9 @@ def draw_price_chart(symbol: str = "XAUUSD") -> Optional[str]:
         if df is None or df.empty:
             logger.error("❌ Không thể lấy dữ liệu từ cả 3 nguồn (MT5, TradingView, yfinance).")
             return None
+        
+        # 4. Tính toán indicators thống nhất bằng pandas-ta
+        df = calculate_indicators(df)
 
         # 2. CẤU HÌNH STYLE CHUYÊN NGHIỆP (PRO DARK)
         # Màu sắc chuẩn
