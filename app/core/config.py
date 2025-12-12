@@ -77,3 +77,9 @@ def setup_logging():
     return logging.getLogger("AppLogger")
 
 logger = setup_logging()
+
+# WordPress Config
+WORDPRESS_URL = os.getenv("WORDPRESS_URL")
+WORDPRESS_USER = os.getenv("WORDPRESS_USER")
+WORDPRESS_APP_PASSWORD = os.getenv("WORDPRESS_APP_PASSWORD")
+WORDPRESS_LIVEBLOG_ID = os.getenv("WORDPRESS_LIVEBLOG_ID", "13092")  # ID của bài liveblog gốc

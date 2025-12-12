@@ -311,38 +311,76 @@ def draw_price_chart(symbol: str = "XAUUSD") -> Optional[str]:
 
 # Hàm get_technical_analysis giữ nguyên không đổi
 def get_technical_analysis(symbol: str = "XAUUSD") -> str:
+    """
+    Lấy dữ liệu phân tích kỹ thuật từ TradingView (Primary) -> MT5 -> yfinance
+    """
     try:
-        client = MT5DataClient()
-        if not client.connect(): return "Lỗi kết nối MT5."
-        df = client.get_historical_data(symbol, timeframe="H1", count=100)
-        client.disconnect()
-        if df is None or df.empty: return "Không lấy được dữ liệu."
+        df = None
+        data_source = "Unknown"
+        
+        # 1. Thử TradingView trước (Primary)
+        df = get_data_from_tradingview(symbol)
+        if df is not None and not df.empty:
+            data_source = "TradingView"
+        
+        # 2. Fallback 1: MT5
+        if df is None or df.empty:
+            client = MT5DataClient()
+            if client.connect():
+                df = client.get_historical_data(symbol, timeframe="H1", count=100)
+                client.disconnect()
+                if df is not None and not df.empty:
+                    data_source = "MT5"
+        
+        # 3. Fallback 2: yfinance
+        if df is None or df.empty:
+            df = get_data_from_yfinance(symbol)
+            if df is not None and not df.empty:
+                data_source = "yfinance"
+        
+        # Nếu không lấy được dữ liệu từ cả 3 nguồn
+        if df is None or df.empty:
+            return "Không lấy được dữ liệu từ TradingView, MT5, yfinance."
+        
+        # Tính toán indicators
         current_price = df['Close'].iloc[-1]
+        
+        # RSI (14)
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rs = gain / loss
         rsi = 100 - (100 / (1 + rs))
         current_rsi = rsi.iloc[-1]
+        
         rsi_status = "Trung tính"
-        if current_rsi > 70: rsi_status = "QUÁ MUA (Overbought)"
-        elif current_rsi < 30: rsi_status = "QUÁ BÁN (Oversold)"
+        if current_rsi > 70: 
+            rsi_status = "QUÁ MUA (Overbought)"
+        elif current_rsi < 30: 
+            rsi_status = "QUÁ BÁN (Oversold)"
+        
+        # EMA20
         ema20 = df['Close'].ewm(span=20, adjust=False).mean().iloc[-1]
         trend_status = "TĂNG" if current_price > ema20 else "GIẢM"
+        
+        # Support/Resistance
         highest_price = df['High'].max()
         lowest_price = df['Low'].min()
         dist_to_high = abs(highest_price - current_price)
         dist_to_low = abs(lowest_price - current_price)
         nearest_level = f"Kháng cự {highest_price:.2f}" if dist_to_high < dist_to_low else f"Hỗ trợ {lowest_price:.2f}"
+        
         summary = f"""
+        - Nguồn dữ liệu: {data_source}
         - Giá hiện tại: {current_price:.2f}
         - Xu hướng H1: {trend_status} (EMA20)
         - RSI (14): {current_rsi:.1f} ({rsi_status})
         - Cản gần nhất: {nearest_level}
         """
         return summary
+        
     except Exception as e:
-        logger.error(f"❌ Lỗi data kỹ thuật: {e}")
+        logger.error(f"❌ Lỗi get_technical_analysis: {e}")
         return "Lỗi tính toán."
 
 def draw_tv_chart(symbol: str = "XAUUSD", exchange: str = "OANDA") -> Optional[str]:

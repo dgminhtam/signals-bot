@@ -138,6 +138,35 @@ def main():
             final_message = format_telegram_message(analysis_result)
             telegram_bot.run_sending(final_message, image_list)
             
+            # 5. GỬI WORDPRESS LIVEBLOG (Optional - không ảnh hưởng Telegram)
+            try:
+                from app.services.wordpress_service import wordpress_service
+                
+                if wordpress_service.enabled:
+                    logger.info("🌐 ĐANG GỬI LÊN WORDPRESS LIVEBLOG...")
+                    
+                    # Upload chart image và lấy URL
+                    image_url = None
+                    if price_chart and os.path.exists(price_chart):
+                        media_id = wordpress_service.upload_image(price_chart, f"XAU/USD Chart {datetime.datetime.now().strftime('%Y%m%d_%H%M')}")
+                        if media_id:
+                            # Lấy URL ảnh từ media_id (cần query lại) hoặc tự xây dựng URL
+                            image_url = f"{wordpress_service.url}/wp-content/uploads/{datetime.datetime.now().strftime('%Y/%m')}/{os.path.basename(price_chart)}"
+                    
+                    # Tạo liveblog entry
+                    entry_title = f"⏰ {datetime.datetime.now().strftime('%H:%M')} - {analysis_result.get('headline', 'Phân tích XAU/USD')}"
+                    
+                    wordpress_service.create_liveblog_entry(
+                        title=entry_title,
+                        content=final_message,
+                        image_url=image_url
+                    )
+                else:
+                    logger.info("ℹ️ WordPress chưa được cấu hình, bỏ qua bước post WP.")
+            except Exception as wp_error:
+                # Lỗi WordPress KHÔNG được phép làm crash Telegram flow
+                logger.error(f"❌ Lỗi khi post WordPress Liveblog (không ảnh hưởng Telegram): {wp_error}")
+            
             logger.info("-" * 50)
             logger.info("🎉 QUY TRÌNH HOÀN TẤT!")
             logger.info("-" * 50)

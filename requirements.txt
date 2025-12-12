@@ -32,6 +32,7 @@ schedule==1.2.2
 
 # Utilities
 python-dotenv==1.0.1
+markdown>=3.5  # For WordPress HTML conversion
 
 # Note: sqlite3 is built-in with Python (no package needed)
 # Note: TvDatafeed is now vendored in app/services/tvdatafeed_client.py
