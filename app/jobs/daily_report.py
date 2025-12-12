@@ -33,23 +33,23 @@ def format_telegram_message(data: Dict[str, Any]) -> str:
         trend_display = "⚖️ ĐI NGANG (SIDEWAY)"
         sentiment_icon = "🟡"
 
-    # 3. Vẽ thanh Sức mạnh (Sentiment Bar)
-    try:
-        norm_score = max(0, min(10, int((score + 10) / 2)))
-    except:
-        norm_score = 5 # Fallback
+    # # 3. Vẽ thanh Sức mạnh (Sentiment Bar)
+    # try:
+    #     norm_score = max(0, min(10, int((score + 10) / 2)))
+    # except:
+    #     norm_score = 5 # Fallback
     
-    if norm_score <= 3:
-        bar_char = "🟥"
-        empty_char = "⬜"
-    elif norm_score <= 6:
-        bar_char = "🟨"
-        empty_char = "⬜"
-    else:
-        bar_char = "🟩"
-        empty_char = "⬜"
+    # if norm_score <= 3:
+    #     bar_char = "🟥"
+    #     empty_char = "⬜"
+    # elif norm_score <= 6:
+    #     bar_char = "🟨"
+    #     empty_char = "⬜"
+    # else:
+    #     bar_char = "🟩"
+    #     empty_char = "⬜"
         
-    progress_bar = (bar_char * norm_score) + (empty_char * (10 - norm_score))
+    # progress_bar = (bar_char * norm_score) + (empty_char * (10 - norm_score))
 
     # 4. Format List tin tức
     if bullets:
@@ -67,8 +67,8 @@ def format_telegram_message(data: Dict[str, Any]) -> str:
         
         f"📊 <b>TÍN HIỆU KỸ THUẬT:</b>\n"
         f"👉 <b>{trend_display}</b>\n"
-        f"📈 Score: {score}/10\n"
-        f"[{progress_bar}]\n"
+        # f"📈 Score: {score}/10\n"
+        # f"[{progress_bar}]\n"
         f"━━━━━━━━━━━━\n\n"
         
         f"📰 <b>ĐIỂM TIN CHÍNH:</b>\n"

@@ -61,7 +61,7 @@ def get_model():
         logger.warning(f"⚠️ Fallback to gemini-1.5-pro due to: {e}")
         return genai.GenerativeModel('gemini-1.5-pro', generation_config=generation_config)
 
-def generate_with_retry(prompt: str, retries: int = 3) -> Optional[str]:
+def generate_with_retry(prompt: str, retries: int = 10) -> Optional[str]:
     """Hàm bọc gọi API với cơ chế Retry & Rotate Key"""
     attempt = 0
     while attempt < retries:

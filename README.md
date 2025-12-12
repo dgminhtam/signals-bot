@@ -1,1 +1,132 @@
-"# signals-bot" 
+# 🤖 AI Gold Signals Bot (XAU/USD)
+
+Bot tín hiệu Vàng (XAU/USD) tự động hóa hoàn toàn: Quét tin tức -> Phân tích Kỹ thuật -> AI Tổng hợp -> Bắn tín hiệu Telegram.
+Được xây dựng với kiến trúc **Clean Architecture** dễ bảo trì và mở rộng.
+
+---
+
+## 🚀 Tính Năng Nổi Bật
+
+### 1. Phân Tích Đa Chiều (News + Technical)
+- **News**: Quét 4 nguồn tin uy tín (Kitco, Investing, GoldPrice, ForexLive) để lọc tin tức ảnh hưởng.
+- **Technical**: Tự động vẽ chart H1, tính RSI, Trend EMA, và các mức Support/Resistance Fibonacci.
+- **AI Synthesis**: Kết hợp cả tin tức và dữ liệu kỹ thuật để đưa ra nhận định "Sniper" (Bullish/Bearish/Sideway).
+
+### 2. Ba Khung Giờ Chiến Lược (Strategic High-Volume Timeframes)
+Scheduler được tối ưu để hoạt động vào các thời điểm thanh khoản cao nhất:
+- **07:00 (Phiên Á)**: Tổng hợp tin đêm, setup plan cho ngày mới.
+- **13:30 (Pre-London)**: Chuẩn bị cho phiên Âu đầy biến động.
+- **19:00 (Pre-New York)**: Quét tin nóng trước giờ Mỹ mở cửa (Giờ quan trọng nhất).
+
+### 3. Real-time Breaking Alert 🚨
+- Một Worker riêng chạy **mỗi 15 phút**.
+- Chỉ báo động khi có tin CỰC NÓNG (War, Fed Surprise, CPI/NFP) có khả năng làm giá chạy ngay lập tức.
+- Bỏ qua các tin nhận định chung chung.
+
+### 4. Smart Scheduling
+- **Weekend Mode**: Tự động ngủ đông vào Thứ 7, Chủ Nhật (do thị trường Gold đóng cửa) để tiết kiệm tài nguyên.
+- **Rate Limit Safe**: Cơ chế delay thông minh giúp tránh bị chặn bởi các trang tin.
+
+---
+
+## 📂 Cấu Trúc Dự Án (Clean Architecture)
+
+```text
+signals-bot/
+├── app/
+│   ├── core/           # Cấu hình & Database nền tảng
+│   │   ├── config.py
+│   │   └── database.py
+│   ├── services/       # Logic nghiệp vụ (Trái tim của Bot)
+│   │   ├── ai_engine.py    # Giao tiếp Google Gemini AI
+│   │   ├── news_crawler.py # Xử lý RSS & Parsing
+│   │   ├── charter.py      # Vẽ Chart & Tính toán Indicator
+│   │   └── telegram_bot.py # Gửi tin nhắn Telegram
+│   ├── jobs/           # Các quy trình chạy định kỳ
+│   │   ├── daily_report.py # Báo cáo Full (Chart + AI + News)
+│   │   └── realtime_alert.py # Báo cáo nhanh (Breaking News)
+│   └── utils/          # Tiện ích
+│       └── prompts.py      # Chứa lời nhắc (Prompt) cho AI
+├── main.py             # File điều khiển trung tâm (Entry Point)
+├── requirements.txt    # Thư viện phụ thuộc
+├── .env                # Biến môi trường (MẬT)
+└── xauusd_news.db      # Database SQLite (Tự tạo)
+```
+
+---
+
+## 🛠️ Cài Đặt & Cấu Hình
+
+### 1. Cài đặt Python & Thư viện
+Yêu cầu Python 3.9 trở lên.
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Cấu hình .env
+Tạo file `.env` tại thư mục gốc và điền thông tin:
+
+```env
+# Gemini API Key (Lấy tại aistudio.google.com)
+GEMINI_API_KEY=AIzaSy...
+
+# Telegram Config (Tạo bot qua @BotFather)
+TELEGRAM_BOT_TOKEN=7098...
+TELEGRAM_CHAT_ID=-461...
+```
+
+### 3. Tùy chỉnh Prompt (Nâng cao)
+Muốn thay đổi giọng văn của AI? Hãy sửa file `app/utils/prompts.py`.
+- **ANALYSIS_PROMPT**: Dùng cho bài phân tích dài (Daily Report).
+- **BREAKING_NEWS_PROMPT**: Dùng cho cảnh báo nhanh.
+
+---
+
+## ▶️ Vận Hành
+
+### Chạy Bot (Auto Mode)
+Chỉ cần chạy file `main.py`. Bot sẽ tự khởi động scheduler và các job.
+
+```bash
+python main.py
+```
+
+### Chế độ chạy thủ công (Manual Mode)
+Thêm các tham số để ép bot chạy ngay lập tức (bỏ qua check giờ/ngày nghỉ):
+
+- **Chạy toàn bộ quy trình (Scan + Report + Alert)**:
+  ```bash
+  python main.py --manual
+  ```
+- **Chỉ chạy Báo cáo (Scan + Report)**:
+  ```bash
+  python main.py --report
+  ```
+- **Chỉ chạy Alert (Quét tin nóng)**:
+  ```bash
+  python main.py --alert
+  ```
+
+### Theo dõi Log
+Bot sẽ in log chi tiết ra màn hình console và lưu vào file `app.log`.
+- `INFO`: Thông báo bình thường (Quét tin, Gửi bài).
+- `WARNING`: Lỗi nhẹ (Không lấy được tin 1 nguồn, AI response lag).
+- `ERROR`: Lỗi cần kiểm tra (Mất kết nối DB, API Key lỗi).
+
+---
+
+## ❓ FAQ / Troubleshooting
+
+**Q: Bot báo "Không có tin mới" liên tục?**
+A: Có thể do đã quét hết tin trong 24h qua. Hãy thử xóa file `xauusd_news.db` để bot quét lại từ đầu, hoặc đợi có tin thị trường mới.
+
+**Q: Làm sao để thay đổi giờ chạy?**
+A: Mở file `main.py`, tìm phần `schedule.every().day.at("...")` và sửa giờ theo ý muốn.
+
+**Q: Chart không vẽ được?**
+A: Kiểm tra kết nối mạng (cần download dữ liệu `yfinance`). Đảm bảo folder `images/` có quyền ghi (bot sẽ tự tạo nếu chưa có).
+
+**Q: Muốn bot chạy 24/7 trên VPS?**
+A: Sử dụng `screen` hoặc `docker` để treo bot.
+Lệnh Screen cơ bản:
+`screen -S bot` -> `python main.py` -> `Ctrl+A, D` (để thoát ra mà bot vẫn chạy).
