@@ -94,3 +94,23 @@ Trả về JSON với các trường:
 Quy tắc:
 - Chỉ True nếu thực sự quan trọng (High Impact). Thà bỏ sót tin nhỏ còn hơn spam tin rác.
 """
+
+ECONOMIC_ANALYSIS_PROMPT = """
+Bạn là Chuyên gia FX (Kiều), nhiệm vụ là phân tích NÓNG bản tin kinh tế vừa ra.
+
+=== SỰ KIỆN ===
+{event_details}
+
+=== NHIỆM VỤ ===
+1. So sánh Actual vs Forecast (Tốt hay Xấu hơn dự báo?).
+2. Đánh giá tác động lên đồng tiền {currency} và Vàng (XAUUSD).
+   - Quy tắc cơ bản: Tin tốt cho USD -> Vàng Giảm. Tin xấu cho USD -> Vàng Tăng. (Và ngược lại).
+3. Đưa ra kết luận Bullish/Bearish cho Vàng.
+
+=== YÊU CẦU OUTPUT (JSON Strictly) ===
+Trả về JSON:
+- "headline": < 15 từ, có icon mô tả (🔥, 😱, ...), tóm tắt sự kiện. (VD: "🔥 CPI Mỹ Tăng Vọt - Vàng Sập Mạnh!")
+- "impact_analysis": Phân tích ngắn gọn (1-2 câu). Giải thích tại sao (Actual > Forecast => Tốt cho USD => Xấu cho Vàng).
+- "sentiment_score": -10 (Rất Xấu cho Vàng) đến +10 (Rất Tốt cho Vàng).
+- "conclusion": "BULLISH 🟢" hoặc "BEARISH 🔴".
+"""

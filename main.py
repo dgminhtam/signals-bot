@@ -16,6 +16,8 @@ from app.core import config
 from app.services import news_crawler
 from app.jobs import daily_report
 from app.jobs import realtime_alert
+from app.jobs import economic_worker
+from app.core import config
 
 logger = config.logger
 
@@ -97,6 +99,10 @@ def run_schedule():
     # Alert
     logger.info("⚡ Thiết lập Real-time Alert: Chạy mỗi 15 phút")
     schedule.every(15).minutes.do(realtime_alert.main)
+
+    # Economic Calendar
+    logger.info("📅 Thiết lập Economic Calendar Worker: Chạy mỗi 5 phút")
+    schedule.every(5).minutes.do(economic_worker.main)
     
     logger.info(f"✅ Đã thiết lập jobs.")
     logger.info("♾️  Bắt đầu vòng lặp tự động...")

@@ -31,7 +31,7 @@ ai_service = get_ai_service()
 
 # --- JSON SCHEMAS ---
 analysis_schema = {
-    "type": "OBJECT",
+     "type": "OBJECT",
      "properties": {
           "reasoning": {"type": "STRING", "description": "Chi tiết quy trình tư duy từng bước (CoT)"},
           "headline": {"type": "STRING"},
@@ -51,6 +51,17 @@ breaking_news_schema = {
           "headline": {"type": "STRING"}
      },
      "required": ["is_breaking", "score", "headline"]
+}
+
+economic_schema = {
+     "type": "OBJECT",
+     "properties": {
+          "headline": {"type": "STRING"},
+          "impact_analysis": {"type": "STRING"},
+          "sentiment_score": {"type": "NUMBER"},
+          "conclusion": {"type": "STRING"}
+     },
+     "required": ["headline", "impact_analysis", "sentiment_score", "conclusion"]
 }
 
 # --- BUSINESS LOGIC FUNCTIONS ---
@@ -165,4 +176,35 @@ def check_breaking_news(content: str) -> Optional[Dict[str, Any]]:
         
     except Exception as e:
         logger.error(f"❌ Lỗi Breaking News Check: {e}")
+        return None
+
+def analyze_economic_data(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Phân tích sự kiện kinh tế (Actual vs Forecast)
+    """
+    details = f"""
+    Title: {event.get('title', 'N/A')}
+    Currency: {event.get('currency', 'USD')}
+    Actual: {event.get('actual', 'N/A')}
+    Forecast: {event.get('forecast', 'N/A')}
+    Previous: {event.get('previous', 'N/A')}
+    """
+    
+    prompt = prompts.ECONOMIC_ANALYSIS_PROMPT.format(
+        event_details=details,
+        currency=event.get('currency', 'USD')
+    )
+    
+    try:
+        response_text = ai_service.generate_content(prompt, schema=economic_schema)
+        if not response_text: return None
+        
+        try:
+            return json.loads(response_text)
+        except json.JSONDecodeError:
+            clean = response_text.replace("```json", "").replace("```", "").strip()
+            return json.loads(clean)
+            
+    except Exception as e:
+        logger.error(f"❌ Lỗi AI Economic Analysis: {e}")
         return None
