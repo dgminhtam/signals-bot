@@ -17,6 +17,7 @@ def main():
         
         # 1. Trigger Crawler để đảm bảo DB có tin mới nhất
         # Crawler sẽ tự động lưu tin mới vào DB (nếu có)
+        # Crawler sẽ tự động lưu tin mới vào DB (nếu có)
         # Chúng ta KHÔNG dùng giá trị trả về của crawler nữa, mà query DB
         # để đảm bảo cả những tin vừa scan ở bước khác cũng được tính.
         news_crawler.get_gold_news(lookback_minutes=20)

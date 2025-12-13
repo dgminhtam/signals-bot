@@ -16,7 +16,7 @@ class WordPressService:
         self.url = config.WORDPRESS_URL
         self.user = config.WORDPRESS_USER
         self.password = config.WORDPRESS_APP_PASSWORD
-        self.timeout = 30  # 30 seconds timeout
+        self.timeout = 10  # Reduced to 10 seconds to prevent hanging
         
         if not all([self.url, self.user, self.password]):
             logger.warning("⚠️ WordPress config chưa đầy đủ. Tính năng post WP sẽ bị tắt.")
@@ -29,8 +29,8 @@ class WordPressService:
             # Setup Session with Retry strategy
             self.session = requests.Session()
             retry_strategy = Retry(
-                total=3,
-                backoff_factor=1,
+                total=1,  # Only retry once
+                backoff_factor=0.5,
                 status_forcelist=[429, 500, 502, 503, 504],
                 allowed_methods=["HEAD", "GET", "OPTIONS", "POST", "PUT"]
             )
@@ -60,7 +60,7 @@ class WordPressService:
                     endpoint,
                     files=files,
                     headers={'Content-Disposition': f'attachment; filename="{title}.png"'},
-                    timeout=self.timeout
+                    timeout=60  # Tăng timeout riêng cho upload ảnh (file lớn)
                 )
             
             if response.status_code in [200, 201]:

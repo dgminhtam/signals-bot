@@ -44,9 +44,27 @@ KEYWORDS_CORRELATION = [
     r"CPI", r"PPI", r"NFP", r"GDP", r"EUR", r"GBP", r"JPY"
 ]
 
-RSS_SOURCES = [
-    {"name": "Investing.com", "url": "https://www.investing.com/rss/news.rss"},
-    {"name": "CNBC World", "url": "https://www.cnbc.com/id/100727362/device/rss/rss.html"}
+# --- NEWS SOURCES CONFIG ---
+# Cấu hình danh sách nguồn tin (RSS + Web Fallback)
+NEWS_SOURCES = [
+    {
+        "name": "CNN Money",
+        "rss": "http://rss.cnn.com/rss/money_markets.rss",
+        "web": "https://edition.cnn.com/business/markets",
+        "selector": "div.article__content p" # Optional: CSS selector for content
+    },
+    {
+        "name": "CNBC World",
+        "rss": "https://www.cnbc.com/id/100727362/device/rss/rss.html",
+        "web": "https://www.cnbc.com/precious-metals/",
+        "selector": None # Use default <p>
+    },
+    {
+        "name": "Kitco News",
+        "rss": "https://www.kitco.com/rss/category/commodities.xml", # Example
+        "web": "https://www.kitco.com/news/commodities",
+        "selector": "div.article-body p"
+    }
 ]
 
 HEADERS = {

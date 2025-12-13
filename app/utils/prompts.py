@@ -58,12 +58,14 @@ Trả về JSON theo schema đã định nghĩa với các lưu ý sau:
 - bullet_points: 3 gạch đầu dòng quan trọng nhất (Nguyên nhân -> Kết quả). Dùng động từ mạnh.
 - conclusion: Chiến lược giao dịch cụ thể (Signal). BẮT BUỘC tham chiếu mức giá trong "Dữ liệu Kỹ thuật".
   Định dạng bắt buộc (dùng ký tự \\n để xuống dòng):
-  "[Action] XAUUSD: [Entry Price]\\nTake Profit: [TP1], [TP2] (Ít nhất 2 mức TP)\\nStop Loss: [SL]"
+  "[BUY/SELL] XAUUSD [NOW/LIMIT] [Entry Price]\\n❌SL: [SL]\\n✅TP1: [TP1]\\n✅TP2: [TP2]"
   
   Quy tắc Action:
-  - Dùng "Buy/Sell" nếu giá hiện tại đã khớp vùng vào lệnh.
-  - Dùng "Buy Limit/Sell Limit" nếu cần chờ giá hồi về vùng đẹp.
-  (Ví dụ: "Buy Limit XAUUSD: 2700\\nTake Profit: 2750, 2765, 2780\\nStop Loss: 2650").
+  - Dùng "BUY ... NOW" hoặc "SELL ... NOW" nếu giá hiện tại đã khớp vùng vào lệnh.
+  - Dùng "BUY ... LIMIT" hoặc "SELL ... LIMIT" nếu cần chờ giá hồi về vùng đẹp.
+  
+  Ví dụ mẫu:
+  "BUY XAUUSD LIMIT 2700\\n❌SL: 2650\\n✅TP1: 2750\\n✅TP2: 2780"
   
   Nếu không có dữ liệu kỹ thuật, chỉ đưa nhận định xu hướng.
 - sentiment_score: Từ -10 (Cực xấu cho Gold) đến +10 (Cực tốt cho Gold). 0 là trung lập.

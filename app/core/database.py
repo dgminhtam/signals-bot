@@ -59,6 +59,21 @@ def init_db() -> None:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
+
+            # Tạo bảng economic_events (MỚI)
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS economic_events (
+                    id TEXT PRIMARY KEY,
+                    title TEXT,
+                    currency TEXT,
+                    impact TEXT,
+                    timestamp DATETIME,
+                    forecast TEXT,
+                    previous TEXT,
+                    actual TEXT,
+                    status TEXT DEFAULT 'pending'  -- pending, pre_notified, post_notified
+                )
+            ''')
             conn.commit()
     except Exception as e:
         logger.error(f"Lỗi khởi tạo DB: {e}")
@@ -180,3 +195,95 @@ def mark_article_alerted(id: str) -> None:
             conn.commit()
     except Exception as e:
         logger.error(f"Lỗi đánh dấu alert: {e}")
+
+# --- Economic Calendar Database Methods ---
+def upsert_economic_event(event: Dict[str, Any]) -> bool:
+    """Insert hoặc Update sự kiện kinh tế"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute('''
+                INSERT INTO economic_events (id, title, currency, impact, timestamp, forecast, previous, actual)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    actual = excluded.actual,
+                    forecast = excluded.forecast,
+                    timestamp = excluded.timestamp
+            ''', (
+                event["id"],
+                event["event"],
+                event["currency"],
+                event["impact"],
+                event["timestamp"], # Requires datetime object or ISO string in event dict
+                event["forecast"],
+                event["previous"],
+                event["actual"]
+            ))
+            conn.commit()
+            return True
+    except Exception as e:
+        logger.error(f"Lỗi upsert economic event {event.get('id')}: {e}")
+        return False
+
+def get_pending_pre_alerts(minutes_window: int = 60) -> List[Dict[str, Any]]:
+    """Lấy sự kiện sắp diễn ra để gửi Pre-Alert"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Lấy sự kiện trong tương lai gần (0 đến minutes_window phút)
+            # VÀ chưa gửi alert (status != 'pre_notified' AND status != 'post_notified')
+            # Lưu ý timestamp phải là string ISO format chuẩn để so sánh
+            c.execute('''
+                SELECT * FROM economic_events
+                WHERE timestamp > datetime('now') 
+                AND timestamp <= datetime('now', ?)
+                AND status = 'pending'
+            ''', (f'+{minutes_window} minutes',))
+            return [dict(row) for row in c.fetchall()]
+    except Exception as e:
+        logger.error(f"Lỗi get pre-alerts: {e}")
+        return []
+
+def get_pending_post_alerts() -> List[Dict[str, Any]]:
+    """Lấy sự kiện ĐÃ CÓ Actual nhưng chưa gửi Post-Alert (Status != post_notified)"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Actual khác rỗng và chưa notified post
+            c.execute('''
+                SELECT * FROM economic_events
+                WHERE actual IS NOT NULL 
+                AND actual != '' 
+                AND status != 'post_notified'
+            ''')
+            return [dict(row) for row in c.fetchall()]
+    except Exception as e:
+        logger.error(f"Lỗi get post-alerts: {e}")
+        return []
+
+def update_event_status(event_id: str, new_status: str) -> None:
+    """Cập nhật trạng thái notify"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("UPDATE economic_events SET status = ? WHERE id = ?", (new_status, event_id))
+            conn.commit()
+    except Exception as e:
+        logger.error(f"Lỗi update status event {event_id}: {e}")
+
+def get_incomplete_events_today() -> List[Dict[str, Any]]:
+    """Lấy các sự kiện hôm nay mà chưa có số liệu Actual (để quyết định fetch lại)"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Lấy các sự kiện mà timestamp là hôm nay VÀ actual chưa có
+            # Dùng date(timestamp) so với date('now', 'localtime')
+            c.execute('''
+                SELECT * FROM economic_events
+                WHERE date(timestamp) = date('now', 'localtime') 
+                AND (actual IS NULL OR actual = '')
+            ''')
+            return [dict(row) for row in c.fetchall()]
+    except Exception as e:
+        logger.error(f"Lỗi get incomplete events: {e}")
+        return []
