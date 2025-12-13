@@ -92,16 +92,19 @@ def main():
         
         logger.info(f"🔍 Tìm thấy {len(articles)} tin để xử lý...")
         
-        # 2. VẼ BIỂU ĐỒ TRƯỚC
-        logger.info("🎨 ĐANG VẼ BIỂU ĐỒ...")
-        price_chart = charter.draw_price_chart() 
+        # 2. LẤY DỮ LIỆU THỊ TRƯỜNG (Một lần duy nhất)
+        logger.info("📊 ĐANG LẤY DỮ LIỆU THỊ TRƯỜNG...")
+        market_df = charter.get_market_data()
         
-        # Gom ảnh vào list để gửi
-        image_list = []
-        if price_chart and os.path.exists(price_chart): 
-            image_list.append(price_chart)
+        if market_df is None or market_df.empty:
+            logger.error("❌ Không thể lấy dữ liệu thị trường, quy trình có thể bị ảnh hưởng.")
+            technical_data = "Không có dữ liệu kỹ thuật."
+        else:
+            # Lấy thông tin kỹ thuật (Price, Support, Resistance)
+            technical_data = charter.get_technical_analysis(market_df)
+            logger.info(f"   + Technical Info: {technical_data.replace(chr(10), ' | ')}")
 
-        # 3. GỌI AI PHÂN TÍCH
+        # 3. GỌI AI PHÂN TÍCH (trước khi vẽ chart)
         logger.info("🤖 ĐANG GỬI DỮ LIỆU SANG AI...")
         
         # Context Memory: Lấy báo cáo phiên trước để AI so sánh
@@ -111,11 +114,19 @@ def main():
         else:
             logger.info("   + Không tìm thấy báo cáo cũ (Cold Start).")
 
-        # Lấy dữ liệu kỹ thuật thực tế để AI phân tích chuẩn hơn
-        technical_data = charter.get_technical_analysis()
-        logger.info(f"   + Context Kỹ thuật: {technical_data.strip()[:50]}...")
-
+        # AI Phân tích
         analysis_result = ai_engine.analyze_market(articles, technical_data, last_report)
+        
+        # 4. VẼ BIỂU ĐỒ (Sau khi AI phân tích xong)
+        logger.info("🎨 ĐANG VẼ BIỂU ĐỒ...")
+        price_chart = None
+        if market_df is not None:
+            price_chart = charter.draw_price_chart(df=market_df)
+            
+        # Gom ảnh vào list để gửi
+        image_list = []
+        if price_chart and os.path.exists(price_chart): 
+            image_list.append(price_chart)
 
         if analysis_result:
             logger.info("✅ AI PHÂN TÍCH THÀNH CÔNG!")
