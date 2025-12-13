@@ -2,6 +2,8 @@
 WordPress Service - Tự động đăng bài lên WordPress qua REST API
 """
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from typing import Optional, Dict, Any
 import logging
 import markdown
@@ -14,6 +16,7 @@ class WordPressService:
         self.url = config.WORDPRESS_URL
         self.user = config.WORDPRESS_USER
         self.password = config.WORDPRESS_APP_PASSWORD
+        self.timeout = 30  # 30 seconds timeout
         
         if not all([self.url, self.user, self.password]):
             logger.warning("⚠️ WordPress config chưa đầy đủ. Tính năng post WP sẽ bị tắt.")
@@ -22,6 +25,19 @@ class WordPressService:
             self.enabled = True
             self.auth = (self.user, self.password)
             self.headers = {"Content-Type": "application/json"}
+            
+            # Setup Session with Retry strategy
+            self.session = requests.Session()
+            retry_strategy = Retry(
+                total=3,
+                backoff_factor=1,
+                status_forcelist=[429, 500, 502, 503, 504],
+                allowed_methods=["HEAD", "GET", "OPTIONS", "POST", "PUT"]
+            )
+            adapter = HTTPAdapter(max_retries=retry_strategy)
+            self.session.mount("https://", adapter)
+            self.session.mount("http://", adapter)
+            self.session.auth = self.auth
     
     def upload_image(self, file_path: str, title: str = "Chart Image") -> Optional[int]:
         """
@@ -39,11 +55,12 @@ class WordPressService:
                     'file': (file_path.split('/')[-1], img, 'image/png')
                 }
                 
-                response = requests.post(
+                # Note: Session auth is applied automatically
+                response = self.session.post(
                     endpoint,
-                    auth=self.auth,
                     files=files,
-                    headers={'Content-Disposition': f'attachment; filename="{title}.png"'}
+                    headers={'Content-Disposition': f'attachment; filename="{title}.png"'},
+                    timeout=self.timeout
                 )
             
             if response.status_code in [200, 201]:
@@ -115,11 +132,11 @@ class WordPressService:
             if media_id:
                 post_data["featured_media"] = media_id
             
-            response = requests.post(
+            response = self.session.post(
                 endpoint,
-                auth=self.auth,
                 headers=self.headers,
-                json=post_data
+                json=post_data,
+                timeout=self.timeout
             )
             
             if response.status_code in [200, 201]:
@@ -175,11 +192,11 @@ class WordPressService:
                 }
             }
             
-            response = requests.post(
+            response = self.session.post(
                 endpoint,
-                auth=self.auth,
                 headers=self.headers,
-                json=entry_data
+                json=entry_data,
+                timeout=self.timeout
             )
             
             if response.status_code in [200, 201]:

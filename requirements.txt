@@ -2,36 +2,36 @@
 # Updated: 2025-12-12
 
 # Core Data Processing
-pandas==2.2.0
-numpy==1.26.3
+pandas>=2.3.3
+numpy>=2.3.2
 
 # Web & Network
-requests==2.31.0
-beautifulsoup4==4.12.3
-feedparser==6.0.11
-websocket-client==1.9.0
+requests>=2.31.0
+beautifulsoup4>=4.12.3
+feedparser>=6.0.11
+websocket-client>=1.9.0
 
 # Date & Time
-python-dateutil==2.8.2
+python-dateutil>=2.8.2
 
 # AI & Analysis
-google-generativeai==0.8.3  # Google Gemini
+google-generativeai>=0.8.3  # Google Gemini
 openai>=1.0.0               # OpenAI ChatGPT
 groq>=0.4.0                 # Groq Cloud (Llama, Mixtral)
 
 # Charting & Visualization
-matplotlib==3.9.3
-mplfinance==0.12.10b0
-yfinance==0.2.50
+matplotlib>=3.10.0
+mplfinance>=0.12.10b0
+yfinance>=0.2.50
 
 # Telegram Bot
-python-telegram-bot==22.5
+python-telegram-bot>=22.5
 
 # Scheduler
-schedule==1.2.2
+schedule>=1.2.2
 
 # Utilities
-python-dotenv==1.0.1
+python-dotenv>=1.0.1
 markdown>=3.5  # For WordPress HTML conversion
 
 # Note: sqlite3 is built-in with Python (no package needed)
