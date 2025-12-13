@@ -18,6 +18,7 @@ IMAGES_DIR = config.IMAGES_DIR
 if not os.path.exists(IMAGES_DIR):
     os.makedirs(IMAGES_DIR)
 
+
 def get_data_from_tradingview(symbol: str = "XAUUSD", exchange: str = "OANDA") -> Optional[pd.DataFrame]:
     """Fallback 1: Lấy dữ liệu từ TradingView"""
     try:
@@ -29,7 +30,7 @@ def get_data_from_tradingview(symbol: str = "XAUUSD", exchange: str = "OANDA") -
             symbol=symbol,
             exchange=exchange,
             interval=Interval.in_1_hour,
-            n_bars=80
+            n_bars=100
         )
         
         if df is None or df.empty:
@@ -46,7 +47,7 @@ def get_data_from_tradingview(symbol: str = "XAUUSD", exchange: str = "OANDA") -
             'volume': 'Volume'
         }, inplace=True)
         
-        df = df.tail(80)
+        df = df.tail(100)
         logger.info(f"✅ Đã lấy {len(df)} nến từ TradingView.")
         return df
         
@@ -80,8 +81,8 @@ def get_data_from_yfinance(symbol: str = "XAUUSD", period: str = "5d", interval:
             'Volume': 'Volume'
         }, inplace=True)
         
-        # Lấy 80 nến gần nhất
-        df = df.tail(80)
+        # Lấy 100 nến gần nhất
+        df = df.tail(100)
         
         logger.info(f"✅ Đã lấy {len(df)} nến từ yfinance.")
         return df
@@ -89,42 +90,6 @@ def get_data_from_yfinance(symbol: str = "XAUUSD", period: str = "5d", interval:
     except Exception as e:
         logger.error(f"❌ Lỗi lấy dữ liệu từ yfinance: {e}")
         return None
-
-def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Tính toán các chỉ báo kỹ thuật sử dụng pandas
-    Áp dụng thống nhất cho tất cả các nguồn dữ liệu
-    """
-    try:
-        # 1. EMA (Exponential Moving Average) - Sử dụng pandas .ewm()
-        df['EMA50'] = df['Close'].ewm(span=50, adjust=False).mean()
-        df['EMA200'] = df['Close'].ewm(span=200, adjust=False).mean()
-        
-        # 2. Support & Resistance (Pivot Points Classic)
-        # Pivot = (High + Low + Close) / 3
-        # Support1 = (2 * Pivot) - High
-        # Resistance1 = (2 * Pivot) - Low
-        
-        pivot = (df['High'] + df['Low'] + df['Close']) / 3
-        df['Support'] = (2 * pivot) - df['High']
-        df['Resistance'] = (2 * pivot) - df['Low']
-        
-        # 3. Smooth S/R bằng moving average để tránh nhiễu
-        df['Support'] = df['Support'].rolling(window=3, min_periods=1).mean()
-        df['Resistance'] = df['Resistance'].rolling(window=3, min_periods=1).mean()
-        
-        # 4. Forward fill NaN values (do EMA cần data đủ dài)
-        df['EMA50'] = df['EMA50'].ffill().bfill()
-        df['EMA200'] = df['EMA200'].ffill().bfill()
-        df['Support'] = df['Support'].ffill().bfill()
-        df['Resistance'] = df['Resistance'].ffill().bfill()
-        
-        logger.info("✅ Đã tính toán indicators (EMA, S/R) bằng pandas.")
-        return df
-        
-    except Exception as e:
-        logger.error(f"❌ Lỗi tính toán indicators: {e}")
-        return df
 
 def draw_price_chart(symbol: str = "XAUUSD") -> Optional[str]:
     logger.info(f"📈 Đang vẽ biểu đồ H1 (Pro Dark Style) cho {symbol}...")
@@ -142,7 +107,7 @@ def draw_price_chart(symbol: str = "XAUUSD") -> Optional[str]:
             logger.warning("⚠️ TradingView không khả dụng, chuyển sang MT5...")
             client = MT5DataClient()
             if client.connect():
-                df = client.get_historical_data(symbol, timeframe="H1", count=80)
+                df = client.get_historical_data(symbol, timeframe="H1", count=100)
                 client.disconnect()
                 
                 if df is not None and not df.empty:
@@ -160,9 +125,6 @@ def draw_price_chart(symbol: str = "XAUUSD") -> Optional[str]:
             logger.error("❌ Không thể lấy dữ liệu từ cả 3 nguồn (TradingView, MT5, yfinance).")
             return None
         
-        # 4. Tính toán indicators thống nhất bằng pandas-ta
-        df = calculate_indicators(df)
-
         # 2. CẤU HÌNH STYLE CHUYÊN NGHIỆP (PRO DARK)
         # Màu sắc chuẩn
         up_color = '#089981'    # Xanh Binance/TradingView
@@ -206,38 +168,24 @@ def draw_price_chart(symbol: str = "XAUUSD") -> Optional[str]:
         
         filename = f"{IMAGES_DIR}/chart_price.png"
 
-        # 2b. TẠO ADDPLOTS (INDICATORS)
-        add_plots = []
+        # Padding: Thêm 20 nến ảo vào cuối để tạo khoảng trống
+        last_date = df.index[-1]
+        padding_candles = 20
+        # Tạo DateIndex tiếp theo
+        # Assuming H1 frequency, but robust to use Timedelta
+        future_dates = pd.date_range(start=last_date + pd.Timedelta(hours=1), periods=padding_candles, freq='h')
+        padding_df = pd.DataFrame(index=future_dates, columns=df.columns)
+        padding_df[:] = np.nan
         
-        # Check EMA50 & EMA200 logic
-        if 'EMA50' in df.columns and 'EMA200' in df.columns:
-            # Lấy data, fillna để tránh lỗi plot
-            ema50 = df['EMA50'].bfill()
-            ema200 = df['EMA200'].bfill()
-            
-            # EMA 50 - Mau Cyan/Blue
-            add_plots.append(mpf.make_addplot(ema50, color='#2962FF', width=0.8))
-            # EMA 200 - Mau Orange
-            add_plots.append(mpf.make_addplot(ema200, color='#FF6D00', width=1.0))
-
-        # Check Support & Resistance logic
-        if 'Support' in df.columns and 'Resistance' in df.columns:
-            # Dùng scatter hoặc line. Ở đây dùng line đứt đoạn cho chuyên nghiệp
-            sup = df['Support']
-            res = df['Resistance']
-            
-            # Support: Green, Dashed
-            add_plots.append(mpf.make_addplot(sup, color='#00E676', width=1.0, linestyle='--'))
-            # Resistance: Red, Dashed
-            add_plots.append(mpf.make_addplot(res, color='#FF1744', width=1.0, linestyle='--'))
+        # Nối df gốc và padding
+        plot_df = pd.concat([df, padding_df])
 
         # 3. VẼ BIỂU ĐỒ
         fig, axlist = mpf.plot(
-            df, 
+            plot_df, 
             type='candle', 
             style=s, 
             volume=False,
-            addplot=add_plots, # <--- ACTIVE EMA
             # Tiêu đề đơn giản, màu trắng
             title="", # Disable default title to use custom text
             ylabel='', 
@@ -260,18 +208,6 @@ def draw_price_chart(symbol: str = "XAUUSD") -> Optional[str]:
         ax.text(0.02, 0.91, f"Gold US Dollar ({data_source})", transform=ax.transAxes,
                 color=text_color, fontsize=10, alpha=0.6, va='top')
         
-        # Line 3: Legend (Indicators)
-        if 'EMA50' in df.columns:
-            ax.text(0.02, 0.86, "EMA 50", transform=ax.transAxes, 
-                    color='#2962FF', fontsize=9, fontweight='bold', va='top')
-            ax.text(0.08, 0.86, "EMA 200", transform=ax.transAxes, 
-                    color='#FF6D00', fontsize=9, fontweight='bold', va='top')
-        
-        if 'Support' in df.columns:
-             ax.text(0.14, 0.86, "Support", transform=ax.transAxes, 
-                    color='#00E676', fontsize=9, fontweight='bold', va='top')
-             ax.text(0.20, 0.86, "Resistance", transform=ax.transAxes, 
-                    color='#FF1744', fontsize=9, fontweight='bold', va='top')
         last_row = df.iloc[-1]
         current_price = last_row['Close']
         
