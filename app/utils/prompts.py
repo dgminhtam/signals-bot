@@ -114,3 +114,15 @@ Trả về JSON:
 - "sentiment_score": -10 (Rất Xấu cho Vàng) đến +10 (Rất Tốt cho Vàng).
 - "conclusion": "BULLISH 🟢" hoặc "BEARISH 🔴".
 """
+
+ECONOMIC_PRE_ANALYSIS_PROMPT = """
+Bạn là Chuyên gia FX (Kiều). Phân tích kịch bản cho tin {title} ({currency}) sắp ra.
+Dự báo: {forecast}. Kỳ trước: {previous}.
+
+Output JSON (Strict):
+{{
+  "explanation": "Giải thích ngắn gọn ý nghĩa chỉ số này (1 câu).",
+  "scenario_high": "Nếu Actual > Forecast: [Tác động USD] -> [Tác động Vàng].",
+  "scenario_low": "Nếu Actual < Forecast: [Tác động USD] -> [Tác động Vàng]."
+}}
+"""

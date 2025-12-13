@@ -208,3 +208,38 @@ def analyze_economic_data(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"❌ Lỗi AI Economic Analysis: {e}")
         return None
+
+economic_pre_schema = {
+     "type": "OBJECT",
+     "properties": {
+          "explanation": {"type": "STRING"},
+          "scenario_high": {"type": "STRING"},
+          "scenario_low": {"type": "STRING"}
+     },
+     "required": ["explanation", "scenario_high", "scenario_low"]
+}
+
+def analyze_pre_economic_data(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Phân tích kịch bản trước tin (Pre-News)
+    """
+    prompt = prompts.ECONOMIC_PRE_ANALYSIS_PROMPT.format(
+        title=event.get('title', 'N/A'),
+        currency=event.get('currency', 'USD'),
+        forecast=event.get('forecast', 'N/A'),
+        previous=event.get('previous', 'N/A')
+    )
+    
+    try:
+        response_text = ai_service.generate_content(prompt, schema=economic_pre_schema)
+        if not response_text: return None
+        
+        try:
+            return json.loads(response_text)
+        except json.JSONDecodeError:
+            clean = response_text.replace("```json", "").replace("```", "").strip()
+            return json.loads(clean)
+            
+    except Exception as e:
+        logger.error(f"❌ Lỗi AI Pre-Economic Analysis: {e}")
+        return None
