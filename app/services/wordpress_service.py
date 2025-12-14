@@ -39,10 +39,10 @@ class WordPressService:
             self.session.mount("http://", adapter)
             self.session.auth = self.auth
     
-    def upload_image(self, file_path: str, title: str = "Chart Image") -> Optional[int]:
+    def upload_image(self, file_path: str, title: str = "Chart Image") -> Optional[Dict[str, Any]]:
         """
         Upload ảnh lên WordPress Media Library
-        Returns: Media ID nếu thành công, None nếu lỗi
+        Returns: Dict info nếu thành công, None nếu lỗi
         """
         if not self.enabled:
             return None
@@ -64,9 +64,10 @@ class WordPressService:
                 )
             
             if response.status_code in [200, 201]:
-                media_id = response.json().get('id')
+                data = response.json()
+                media_id = data.get('id')
                 logger.info(f"✅ Đã upload ảnh lên WordPress. Media ID: {media_id}")
-                return media_id
+                return data
             else:
                 logger.error(f"❌ Lỗi upload ảnh WP: {response.status_code} - {response.text}")
                 return None

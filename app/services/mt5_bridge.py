@@ -76,7 +76,7 @@ class MT5DataClient:
             csv_str = response_str.replace(";", "\n")
             
             df = pd.read_csv(io.StringIO(csv_str), header=None, 
-                             names=["Time", "Open", "High", "Low", "Close", "Volume", "EMA50", "EMA200", "Support", "Resistance"])
+                             names=["Time", "Open", "High", "Low", "Close", "Volume"])
             
             # Xử lý datetime
             df['Time'] = pd.to_datetime(df['Time'], unit='s')
@@ -92,3 +92,40 @@ class MT5DataClient:
         except Exception as e:
             print(f"❌ Lỗi lấy data: {e}")
             return None
+
+    def execute_order(self, symbol: str, order_type: str, volume: float, sl: float, tp: float) -> str:
+        """
+        Gửi lệnh giao dịch: ORDER|SYMBOL|TYPE|VOL|SL|TP
+        """
+        if not self.sock:
+            if not self.connect():
+                return "FAIL|NO_CONNECTION"
+        
+        try:
+            # Format: ORDER|XAUUSD|BUY|0.01|2000.0|2050.0
+            command = f"ORDER|{symbol}|{order_type}|{volume}|{sl}|{tp}"
+            self.sock.send(command.encode())
+            
+            response = self.sock.recv(4096).decode('utf-8').strip()
+            return response
+        except Exception as e:
+            print(f"❌ Lỗi gửi lệnh: {e}")
+            return f"FAIL|EXCEPTION|{e}"
+
+    def check_positions(self, symbol: str = "ALL") -> str:
+        """
+        Kiểm tra lệnh đang mở: CHECK|SYMBOL
+        """
+        if not self.sock:
+            if not self.connect():
+                return "FAIL|NO_CONNECTION"
+            
+        try:
+            command = f"CHECK|{symbol}"
+            self.sock.send(command.encode())
+            
+            response = self.sock.recv(4096).decode('utf-8').strip()
+            return response
+        except Exception as e:
+            print(f"❌ Lỗi check lệnh: {e}")
+            return f"FAIL|EXCEPTION|{e}"

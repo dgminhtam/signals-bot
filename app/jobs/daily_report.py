@@ -1,7 +1,7 @@
 import json
 import os
 import datetime
-from typing import Dict, Any
+from typing import Dict, Any, List
 from app.core import database
 from app.services import ai_engine
 from app.services import charter
@@ -10,7 +10,7 @@ from app.core import config
 
 logger = config.logger
 
-def format_telegram_message(data: Dict[str, Any]) -> str:
+def format_telegram_message(data: Dict[str, Any], articles: List[Dict[str, Any]] = None) -> str:
     """
     Hàm làm đẹp tin nhắn Telegram (Formatter) - Optimized UI
     """
@@ -79,6 +79,20 @@ def format_telegram_message(data: Dict[str, Any]) -> str:
         f"{conclusion}\n\n"
     )
     
+    # 7. Add Source Hashtags
+    if articles:
+        hashtags = set()
+        for art in articles:
+            source = art.get('source', '')
+            if source:
+                # Cleanup: "RSS CNN Money" -> "#cnnmoney", "Kitco News" -> "#kitconews"
+                tag = source.lower().replace('rss', '').replace(' ', '').replace('.', '').strip()
+                if tag:
+                    hashtags.add(f"#{tag}")
+        
+        if hashtags:
+            message += " ".join(sorted(hashtags))
+    
     return message
 
 def main():
@@ -92,7 +106,7 @@ def main():
         
         # 2. LẤY DỮ LIỆU THỊ TRƯỜNG (Một lần duy nhất)
         logger.info("📊 ĐANG LẤY DỮ LIỆU THỊ TRƯỜNG...")
-        market_df = charter.get_market_data()
+        market_df, source = charter.get_market_data()
         
         if market_df is None or market_df.empty:
             logger.error("❌ Không thể lấy dữ liệu thị trường, quy trình có thể bị ảnh hưởng.")
@@ -119,7 +133,7 @@ def main():
         logger.info("🎨 ĐANG VẼ BIỂU ĐỒ...")
         price_chart = None
         if market_df is not None:
-            price_chart = charter.draw_price_chart(df=market_df)
+            price_chart = charter.draw_price_chart(df=market_df, data_source=source)
             
         # Gom ảnh vào list để gửi
         image_list = []
@@ -144,7 +158,7 @@ def main():
             # 4. GỬI TELEGRAM
             logger.info("🚀 KÍCH HOẠT TELEGRAM BOT...")
             
-            final_message = format_telegram_message(analysis_result)
+            final_message = format_telegram_message(analysis_result, articles)
             telegram_bot.run_sending(final_message, image_list)
             
             # 5. GỬI WORDPRESS LIVEBLOG (Optional - không ảnh hưởng Telegram)
@@ -157,10 +171,10 @@ def main():
                     # Upload chart image và lấy URL
                     image_url = None
                     if price_chart and os.path.exists(price_chart):
-                        media_id = wordpress_service.upload_image(price_chart, f"XAU/USD Chart {datetime.datetime.now().strftime('%Y%m%d_%H%M')}")
-                        if media_id:
-                            # Lấy URL ảnh từ media_id (cần query lại) hoặc tự xây dựng URL
-                            image_url = f"{wordpress_service.url}/wp-content/uploads/{datetime.datetime.now().strftime('%Y/%m')}/{os.path.basename(price_chart)}"
+                        media_info = wordpress_service.upload_image(price_chart, f"XAU/USD Chart {datetime.datetime.now().strftime('%Y%m%d_%H%M')}")
+                        if media_info:
+                            # Lấy URL trực tiếp từ response của WordPress
+                            image_url = media_info.get('source_url')
                     
                     # Tạo liveblog entry
                     entry_title = f"⏰ {datetime.datetime.now().strftime('%H:%M')} - {analysis_result.get('headline', 'Phân tích XAU/USD')}"

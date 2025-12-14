@@ -20,17 +20,17 @@ if not os.path.exists(IMAGES_DIR):
 
 
 def get_data_from_tradingview(symbol: str = "XAUUSD", exchange: str = "OANDA") -> Optional[pd.DataFrame]:
-    """Fallback 1: Lấy dữ liệu từ TradingView"""
+    """Fallback 2: Lấy dữ liệu từ TradingView"""
     try:
         from app.services.tvdatafeed_client import TvDatafeed, Interval
         
-        logger.info(f"🔄 Fallback 1: Đang lấy dữ liệu từ TradingView ({symbol}/{exchange})...")
+        logger.info(f"🔄 Fallback 2: Đang lấy dữ liệu từ TradingView ({symbol}/{exchange})...")
         tv = TvDatafeed()
         df = tv.get_hist(
             symbol=symbol,
             exchange=exchange,
             interval=Interval.in_1_hour,
-            n_bars=100
+            n_bars=120
         )
         
         if df is None or df.empty:
@@ -47,7 +47,7 @@ def get_data_from_tradingview(symbol: str = "XAUUSD", exchange: str = "OANDA") -
             'volume': 'Volume'
         }, inplace=True)
         
-        df = df.tail(100)
+        df = df.tail(120)
         logger.info(f"✅ Đã lấy {len(df)} nến từ TradingView.")
         return df
         
@@ -59,12 +59,12 @@ def get_data_from_tradingview(symbol: str = "XAUUSD", exchange: str = "OANDA") -
         return None
 
 def get_data_from_yfinance(symbol: str = "XAUUSD", period: str = "5d", interval: str = "1h") -> Optional[pd.DataFrame]:
-    """Fallback 2: Lấy dữ liệu từ yfinance nếu cả MT5 và TradingView đều chết"""
+    """Fallback 3: Lấy dữ liệu từ yfinance nếu cả MT5 và TradingView đều chết"""
     try:
         # Map symbol: XAUUSD -> GC=F (Gold Futures)
         yf_symbol = "GC=F" if symbol == "XAUUSD" else symbol
         
-        logger.info(f"🔄 Fallback 2: Đang lấy dữ liệu từ yfinance ({yf_symbol})...")
+        logger.info(f"🔄 Fallback 3: Đang lấy dữ liệu từ yfinance ({yf_symbol})...")
         ticker = yf.Ticker(yf_symbol)
         df = ticker.history(period=period, interval=interval)
         
@@ -81,8 +81,8 @@ def get_data_from_yfinance(symbol: str = "XAUUSD", period: str = "5d", interval:
             'Volume': 'Volume'
         }, inplace=True)
         
-        # Lấy 100 nến gần nhất
-        df = df.tail(100)
+        # Lấy 120 nến gần nhất
+        df = df.tail(120)
         
         logger.info(f"✅ Đã lấy {len(df)} nến từ yfinance.")
         return df
@@ -91,51 +91,47 @@ def get_data_from_yfinance(symbol: str = "XAUUSD", period: str = "5d", interval:
         logger.error(f"❌ Lỗi lấy dữ liệu từ yfinance: {e}")
         return None
 
-def get_market_data(symbol: str = "XAUUSD") -> Optional[pd.DataFrame]:
+def get_market_data(symbol: str = "XAUUSD") -> Tuple[Optional[pd.DataFrame], str]:
     """
-    Hàm trung tâm để lấy dữ liệu thị trường từ TradingView -> MT5 -> yfinance
-    Trả về DataFrame hoặc None
+    Hàm trung tâm để lấy dữ liệu thị trường theo thứ tự: MT5 -> TradingView -> yfinance
+    Trả về (DataFrame, source_name)
     """
     logger.info(f"📊 Đang lấy dữ liệu thị trường cho {symbol}...")
     
     df = None
     
-    # 1. Thử TradingView trước (Primary)
-    df = get_data_from_tradingview(symbol)
-    if df is not None and not df.empty:
-        logger.info(f"✅ Đã lấy dữ liệu từ TradingView")
-        return df
-    
-    # 2. Fallback 1: MT5
-    logger.warning("⚠️ TradingView không khả dụng, chuyển sang MT5...")
+    # 1. Thử MT5 trước (Primary)
     client = MT5DataClient()
     if client.connect():
-        df = client.get_historical_data(symbol, timeframe="H1", count=100)
+        logger.info("🔌 Kết nối MT5 thành công, đang lấy dữ liệu...")
+        df = client.get_historical_data(symbol, timeframe="H1", count=120)
         client.disconnect()
         if df is not None and not df.empty:
             logger.info(f"✅ Đã lấy dữ liệu từ MT5")
-            return df
+            return df, "MT5"
+    else:
+        logger.warning("⚠️ Không thể kết nối MT5.")
+
+    # 2. Fallback 1: TradingView
+    logger.warning("⚠️ Chuyển sang TradingView...")
+    df = get_data_from_tradingview(symbol)
+    if df is not None and not df.empty:
+        logger.info(f"✅ Đã lấy dữ liệu từ TradingView")
+        return df, "TradingView"
     
     # 3. Fallback 2: yfinance
-    logger.warning("⚠️ MT5 không khả dụng, chuyển sang yfinance...")
+    logger.warning("⚠️ TradingView không khả dụng, chuyển sang yfinance...")
     df = get_data_from_yfinance(symbol)
     if df is not None and not df.empty:
         logger.info(f"✅ Đã lấy dữ liệu từ yfinance")
-        return df
+        return df, "yfinance"
     
     logger.error("❌ Không thể lấy dữ liệu từ cả 3 nguồn")
-    return None
+    return None, "None"
 
-def calculate_fibonacci_levels(df: pd.DataFrame, window: int = 100) -> Dict[str, float]:
+def calculate_fibonacci_levels(df: pd.DataFrame, window: int = 120) -> Dict[str, float]:
     """
     Tính toán các mức Fibonacci Retracement dựa trên window nến gần nhất
-    
-    Args:
-        df: DataFrame chứa dữ liệu OHLC
-        window: Số nến sử dụng để tính (mặc định 100)
-    
-    Returns:
-        Dictionary chứa các mức Fibonacci {level_name: price}
     """
     try:
         # Lấy window nến gần nhất
@@ -165,6 +161,68 @@ def calculate_fibonacci_levels(df: pd.DataFrame, window: int = 100) -> Dict[str,
         return {}
 
 
+def _analyze_trend(df: pd.DataFrame) -> str:
+    """
+    Xác định xu hướng nhanh dựa trên Price vs SMA20
+    Returns: "UP" | "DOWN" | "NEUTRAL"
+    """
+    try:
+        if len(df) < 20:
+             # Fallback to Price vs Prev Close if not enough data
+             return "UP" if df['Close'].iloc[-1] >= df['Close'].iloc[-2] else "DOWN"
+        
+        sma20 = df['Close'].tail(20).mean()
+        current_price = df['Close'].iloc[-1]
+        
+        return "UP" if current_price >= sma20 else "DOWN"
+    except:
+        return "NEUTRAL"
+
+def _prepare_volume_plots(plot_df: pd.DataFrame, up_color: str, down_color: str) -> list:
+    """
+    Tách logic xử lý indicator volume - trả về list addplot
+    Màu sắc dựa trên sự thay đổi Volume (Lớn hơn nến trước -> Xanh, Nhỏ hơn -> Đỏ)
+    """
+    try:
+        # DEBUG: Print Volume Values (Exclude NaNs from padding)
+        valid_vol = plot_df['Volume'].dropna()
+        logger.info(f"🔎 Valid Volume Stats: Max={valid_vol.max()}, Min={valid_vol.min()}")
+        logger.info(f"🔎 Last 20 Valid Volumes: {valid_vol.tail(20).tolist()}")
+        
+        volume_up = plot_df['Volume'].copy()
+        volume_down = plot_df['Volume'].copy()
+        
+        prev_volume = plot_df['Volume'].shift(1)
+
+        for i in range(len(plot_df)):
+            current_vol = plot_df['Volume'].iloc[i]
+            
+            if pd.isna(current_vol):
+                volume_up.iloc[i] = np.nan
+                volume_down.iloc[i] = np.nan
+                continue
+
+            previous_vol = prev_volume.iloc[i]
+
+            if pd.isna(previous_vol):
+                volume_down.iloc[i] = np.nan
+                continue
+
+            if current_vol >= previous_vol:
+                volume_down.iloc[i] = np.nan
+            else:
+                volume_up.iloc[i] = np.nan
+        
+        return [
+            mpf.make_addplot(volume_up, panel=1, color=up_color, 
+                           type='bar', width=0.4, ylabel='Volume', secondary_y=False),
+            mpf.make_addplot(volume_down, panel=1, color=down_color, 
+                           type='bar', width=0.4, secondary_y=False)
+        ]
+    except Exception as e:
+        logger.error(f"❌ Error preparing volume plots: {e}")
+        return []
+
 def draw_price_chart(symbol: str = "XAUUSD", df: Optional[pd.DataFrame] = None, data_source: str = "Unknown") -> Optional[str]:
     """
     Vẽ biểu đồ giá với Fibonacci levels
@@ -172,19 +230,22 @@ def draw_price_chart(symbol: str = "XAUUSD", df: Optional[pd.DataFrame] = None, 
     Args:
         symbol: Symbol để vẽ (dùng cho tiêu đề)
         df: DataFrame chứa dữ liệu OHLC (nếu None sẽ tự động lấy)
-        data_source: Tên nguồn dữ liệu (để hiển thị)
+        data_source: Tên nguồn dữ liệu (để hiển thị và quyết định vẽ Volume)
     """
     logger.info(f"📈 Đang vẽ biểu đồ H1 (Pro Dark Style) cho {symbol}...")
     
     try:
         # Nếu không có DataFrame, tự động lấy dữ liệu
         if df is None:
-            df = get_market_data(symbol)
+            df, source = get_market_data(symbol)
             if df is None or df.empty:
                 logger.error("❌ Không thể lấy dữ liệu để vẽ biểu đồ.")
                 return None
-            data_source = "Auto-fetched"
+            data_source = source
         
+        # Decision: Draw Volume only if source is MT5
+        draw_volume = (data_source == "MT5")
+
         # 2. CẤU HÌNH STYLE CHUYÊN NGHIỆP (PRO DARK)
         # Màu sắc chuẩn
         up_color = '#089981'    # Xanh Binance/TradingView
@@ -204,7 +265,7 @@ def draw_price_chart(symbol: str = "XAUUSD", df: Optional[pd.DataFrame] = None, 
         # Cấu hình style tổng thể Custom
         s = mpf.make_mpf_style(
             marketcolors=mc,
-            gridstyle=':',          # Lưới chấm bị
+            gridstyle=':',          # Lưới chấm bi
             gridcolor=grid_color,   # Màu lưới mờ
             gridaxis='both',        # Hiện lưới cả 2 trục
             y_on_right=True,        # Trục giá bên phải
@@ -240,54 +301,67 @@ def draw_price_chart(symbol: str = "XAUUSD", df: Optional[pd.DataFrame] = None, 
         # Nối df gốc và padding
         plot_df = pd.concat([df, padding_df])
 
-        # 3. CHUẨN BỊ VOLUME BARS (Xanh/Đỏ)
-        # Tách volume thành 2 series: up và down
-        volume_up = plot_df['Volume'].copy()
-        volume_down = plot_df['Volume'].copy()
-        
-        for i in range(len(plot_df)):
-            if pd.isna(plot_df['Close'].iloc[i]) or pd.isna(plot_df['Open'].iloc[i]):
-                volume_up.iloc[i] = np.nan
-                volume_down.iloc[i] = np.nan
-            elif plot_df['Close'].iloc[i] >= plot_df['Open'].iloc[i]:
-                # Nến tăng - chỉ hiện volume_up
-                volume_down.iloc[i] = np.nan
-            else:
-                # Nến giảm - chỉ hiện volume_down
-                volume_up.iloc[i] = np.nan
-        
-        # Tạo 2 addplot riêng cho volume up và down dưới dạng bars
-        apds = [
-            mpf.make_addplot(volume_up, panel=1, color=up_color, 
-                           type='bar', width=0.8, alpha=0.8, ylabel='Volume'),
-            mpf.make_addplot(volume_down, panel=1, color=down_color, 
-                           type='bar', width=0.8, alpha=0.8)
-        ]
+        # 3. CHUẨN BỊ VOLUME BARS (Chỉ khi draw_volume=True)
+        apds = []
+        if draw_volume:
+            apds = _prepare_volume_plots(plot_df, up_color, down_color)
+            
+        # 3. VẼ BIỂU ĐỒ
+        # Nếu vẽ volume thì panel_ratios=(3, 1), nếu không thì không cần panel 1
+        panel_ratios = (3, 1) if draw_volume else (1, 0)
 
         # 3. VẼ BIỂU ĐỒ
-        fig, axlist = mpf.plot(
-            plot_df, 
+        # Nếu vẽ volume thì panel_ratios=(3, 1), nếu không thì không cần panel 1
+        panel_ratios = (3, 1) if draw_volume else (1, 0) # mplfinance might complain about 0 ratio, let's see logic below
+        
+        # Logic: If volume=False in mpf.plot, it uses panel 0 for price. 
+        # If we pass addplot with panel=1, we need to ensure mpf allocates panels.
+        # Simple fix: just don't pass panel_ratios if no volume, or pass simple tuple.
+        
+        kwargs = dict(
             type='candle', 
             style=s, 
-            volume=False,  # Tắt volume mặc định
-            addplot=apds,  # Thêm volume custom
-            panel_ratios=(3, 1),  # Tỷ lệ giữa price panel và volume panel (3:1)
-            # Tiêu đề đơn giản, màu trắng
-            title="", # Disable default title to use custom text
+            volume=False,  # Luôn tắt volume mặc định để dùng custom addplot HOẶC không vẽ
+            title="", 
             ylabel='', 
             datetime_format='%d/%m %H:%M',
             xrotation=0, 
-            figsize=(14, 9),  # Tăng chiều cao một chút cho volume panel
+            figsize=(14, 9),  
             tight_layout=True,
             returnfig=True,
-            savefig=filename
+            savefig=filename,
+            update_width_config=dict(candle_width=0.6) # Narrow gap by widening candles
         )
+        
+        if draw_volume:
+            kwargs['addplot'] = apds
+            kwargs['panel_ratios'] = (3, 1)
+        else:
+             # Không addplot volume -> Chỉ có panel 0
+             pass
+        
+        fig, axlist = mpf.plot(plot_df, **kwargs)
 
-        # 4. CẤU HÌNH VOLUME PANEL
-        # Set volume y-axis limits
-        if len(axlist) > 1:
-            volume_ax = axlist[1]
-            volume_ax.set_ylim(0, 55100)
+        # 4. CẤU HÌNH VOLUME PANEL (Nếu có)
+        if draw_volume and len(axlist) > 1:
+            # Determine Volume Axis
+            # With y_on_right=True, axlist structure can be complex (Main, TwinMain, Panel1, TwinPanel1...)
+            # We try to identify the volume axis (Panel 1)
+            # Usually Panel 1 axes appear after Panel 0 axes.
+            
+            volume_ax = None
+            if len(axlist) >= 3:
+                volume_ax = axlist[2] # Typical for [Main, MainTwin, Vol]
+            elif len(axlist) >= 2:
+                volume_ax = axlist[1]
+                
+            if volume_ax:
+                max_vol = plot_df['Volume'].max()
+                if pd.notna(max_vol) and max_vol > 0:
+                     # Log data for debugging
+                    logger.info(f"📊 Volume Stats: Max={max_vol}, Min={plot_df['Volume'].min()}")
+                    # Set limit to 1.1x max to avoid clipping
+                    volume_ax.set_ylim(0, max_vol * 1.1)
 
         # 4. TẠO THẺ GIÁ HIỆN TẠI (PRICE TAG)
         ax = axlist[0]
@@ -327,7 +401,7 @@ def draw_price_chart(symbol: str = "XAUUSD", df: Optional[pd.DataFrame] = None, 
         )
 
         # 4.2 VẼ CÁC MỨC FIBONACCI RETRACEMENT
-        fibo_levels = calculate_fibonacci_levels(df, window=100)
+        fibo_levels = calculate_fibonacci_levels(df, window=140)
         
         if fibo_levels:
             fibo_color = '#1E90FF'  # Dodger Blue color
@@ -349,9 +423,14 @@ def draw_price_chart(symbol: str = "XAUUSD", df: Optional[pd.DataFrame] = None, 
                           linewidth=linewidth, alpha=alpha, zorder=1)
                 
                 # Vẽ nhãn giá bên phải
+                try:
+                    perc_label = f"{float(level_name)*100:g}"
+                except:
+                    perc_label = level_name
+
                 ax.text(
                     1.002, price,
-                    f' Fibo {level_name}: {price:.2f} ',
+                    f' Fibo {perc_label}: {price:.2f} ',
                     transform=ax.get_yaxis_transform(),
                     color=fibo_color,
                     fontsize=8,
@@ -368,13 +447,37 @@ def draw_price_chart(symbol: str = "XAUUSD", df: Optional[pd.DataFrame] = None, 
                 )
             
             logger.info(f"✅ Đã vẽ {len(fibo_levels)} mức Fibonacci Retracement.")
-
+            
+        # 4.3 VẼ MŨI TÊN XU HƯỚNG (AI VIEWPOINT)
+        trend = _analyze_trend(df)
+        arrow_color = up_color if trend == "UP" else down_color
+        arrow_text = "TĂNG" if trend == "UP" else "GIẢM"
+        
+        # Vị trí: Góc trên bên phải, dưới Price Tag
+        # Dùng transAxes để cố định vị trí trên khung hình
+        ax.annotate(
+            f"Xu hướng: {arrow_text}", 
+            xy=(0.95, 0.92), xycoords='axes fraction',
+            xytext=(0.95, 0.92), textcoords='axes fraction',
+            fontsize=12, fontweight='bold', color=arrow_color,
+            ha='right', va='top',
+            bbox=dict(boxstyle="round,pad=0.3", fc=bg_color, ec=arrow_color, alpha=0.8)
+        )
+        
+        # Vẽ mũi tên biểu tượng to hơn bên cạnh text
+        arrow_marker = '▲' if trend == "UP" else '▼'
+        ax.text(
+            0.96, 0.92, arrow_marker, 
+            transform=ax.transAxes,
+            color=arrow_color, fontsize=18, fontweight='bold',
+            ha='left', va='top'
+        )
 
         # 5. Lưu ảnh (High Quality)
         fig.savefig(filename, bbox_inches='tight', pad_inches=0.1, dpi=300, facecolor=fig.get_facecolor())
         plt.close(fig)
         
-        logger.info(f"✅ Đã lưu chart Pro Style tại: {filename}")
+        logger.info(f"✅ Đã lưu chart Price ({data_source}) tại: {filename}")
         return filename
 
     except Exception as e:
@@ -403,7 +506,7 @@ def get_technical_analysis(df: pd.DataFrame) -> str:
         current_price = df['Close'].iloc[-1]
         
         # Tính Support/Resistance dựa trên Fibonacci
-        fibo_levels = calculate_fibonacci_levels(df, window=100)
+        fibo_levels = calculate_fibonacci_levels(df, window=120)
         
         support_level = None
         resistance_level = None
@@ -423,230 +526,51 @@ def get_technical_analysis(df: pd.DataFrame) -> str:
                         resistance_level = price
                         resistance_name = level_name
         
+        # Calculate Volume Data
+        current_vol = df['Volume'].iloc[-1]
+        prev_vol = df['Volume'].iloc[-2] if len(df) > 1 else current_vol
+        vol_avg_20 = df['Volume'].tail(20).mean()
+        vol_signal = "TĂNG" if current_vol >= prev_vol else "GIẢM"
+        
         # Format kết quả - CHỈ 3 THÔNG TIN
-        support_str = f"{support_level:.2f} (Fibo {support_name})" if support_level else "N/A"
-        resistance_str = f"{resistance_level:.2f} (Fibo {resistance_name})" if resistance_level else "N/A"
+        # Helper func to format fibo name
+        def fmt_fibo(name):
+            try:
+                return f"{float(name)*100:g}"
+            except:
+                return name
+
+        support_str = f"{support_level:.2f} (Fibo {fmt_fibo(support_name)})" if support_level else "N/A"
+        resistance_str = f"{resistance_level:.2f} (Fibo {fmt_fibo(resistance_name)})" if resistance_level else "N/A"
         
         summary = f"""
 - Giá hiện tại: {current_price:.2f}
 - Hỗ trợ: {support_str}
 - Kháng cự: {resistance_str}
+- Volume: {int(current_vol):,} ({vol_signal} vs {int(prev_vol):,})
+- Vol TB 20: {int(vol_avg_20):,}
         """
         return summary.strip()
         
     except Exception as e:
+        # Check traceback
+        import traceback
+        traceback.print_exc()
         logger.error(f"❌ Lỗi get_technical_analysis: {e}")
         return "Lỗi tính toán."
 
-def draw_tv_chart(symbol: str = "XAUUSD", exchange: str = "OANDA") -> Optional[str]:
-    """
-    Vẽ biểu đồ đơn giản từ TradingView datafeed (Không có indicator)
-    Lưu vào: tv_chart_price.png
-    """
-    logger.info(f"📺 Đang vẽ biểu đồ TradingView cho {symbol}...")
-    
-    try:
-        from app.services.tvdatafeed_client import TvDatafeed, Interval
-        
-        # 1. Khởi tạo TvDatafeed (No login - public data)
-        tv = TvDatafeed()
-        
-        # 2. Lấy dữ liệu (80 nến H1)
-        logger.info(f"📡 Đang lấy dữ liệu từ TradingView ({symbol}/{exchange})...")
-        df = tv.get_hist(
-            symbol=symbol,
-            exchange=exchange,
-            interval=Interval.in_1_hour,
-            n_bars=100
-        )
-        
-        if df is None or df.empty:
-            logger.error("❌ TradingView không trả về dữ liệu.")
-            return None
-        
-        # 3. Chuẩn hóa DataFrame cho mplfinance
-        # TvDatafeed trả về: datetime, symbol, open, high, low, close, volume
-        df.index.name = 'Date'
-        df.rename(columns={
-            'open': 'Open',
-            'high': 'High',
-            'low': 'Low',
-            'close': 'Close',
-            'volume': 'Volume'
-        }, inplace=True)
-        
-        logger.info(f"✅ Đã lấy {len(df)} nến từ TradingView.")
-        
-        # 4. Style đơn giản (Dark, Clean)
-        up_color = '#089981'
-        down_color = '#f23645'
-        bg_color = '#131722'
-        grid_color = '#2a2e39'
-        text_color = '#d1d4dc'
-        
-        mc = mpf.make_marketcolors(
-            up=up_color, down=down_color,
-            edge='inherit',
-            wick='inherit',
-            volume='in'
-        )
-        
-        s = mpf.make_mpf_style(
-            marketcolors=mc,
-            gridstyle=':',
-            gridcolor=grid_color,
-            gridaxis='both',
-            y_on_right=True,
-            facecolor=bg_color,
-            figcolor=bg_color,
-            rc={
-                'font.family': 'monospace',
-                'font.monospace': ['Consolas', 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New'],
-                'axes.labelcolor': text_color,
-                'xtick.color': text_color,
-                'ytick.color': text_color,
-                'axes.spines.bottom': True,
-                'axes.spines.top': True,
-                'axes.spines.left': True,
-                'axes.spines.right': True,
-                'axes.linewidth': 0.8,
-                'axes.edgecolor': '#FFFFFF'
-            }
-        )
-        
-        filename = f"{IMAGES_DIR}/tv_chart_price.png"
-        
-        # 4.5 CHUẨN BỊ VOLUME BARS (Xanh/Đỏ)
-        # Tách volume thành 2 series: up và down
-        volume_up = df['Volume'].copy()
-        volume_down = df['Volume'].copy()
-        
-        for i in range(len(df)):
-            if df['Close'].iloc[i] >= df['Open'].iloc[i]:
-                # Nến tăng - chỉ hiện volume_up
-                volume_down.iloc[i] = np.nan
-            else:
-                # Nến giảm - chỉ hiện volume_down
-                volume_up.iloc[i] = np.nan
-        
-        # Tạo 2 addplot riêng cho volume up và down dưới dạng bars
-        apds = [
-            mpf.make_addplot(volume_up, panel=1, color=up_color, 
-                           type='bar', width=0.8, alpha=0.8, ylabel='Volume'),
-            mpf.make_addplot(volume_down, panel=1, color=down_color, 
-                           type='bar', width=0.8, alpha=0.8)
-        ]
-        
-        # 5. Vẽ biểu đồ (Simple, No Indicators)
-        fig, axlist = mpf.plot(
-            df,
-            type='candle',
-            style=s,
-            volume=False,  # Tắt volume mặc định
-            addplot=apds,  # Thêm volume custom
-            panel_ratios=(3, 1),  # Tỷ lệ giữa price panel và volume panel
-            title="",
-            ylabel='',
-            datetime_format='%d/%m %H:%M',
-            xrotation=0,
-            figsize=(14, 9),  # Tăng chiều cao cho volume panel
-            tight_layout=True,
-            returnfig=True,
-            savefig=filename
-        )
-        
-        # 5.5 CẤU HÌNH VOLUME PANEL
-        # Set volume y-axis limits
-        if len(axlist) > 1:
-            volume_ax = axlist[1]
-            volume_ax.set_ylim(0, 55100)
-        
-        # 6. Custom Header
-        ax = axlist[0]
-        ax.text(0.02, 0.96, f"{symbol} - H1 (TradingView)", transform=ax.transAxes,
-                color=text_color, fontsize=12, fontweight='bold', va='top')
-        ax.text(0.02, 0.91, "Gold US Dollar", transform=ax.transAxes,
-                color=text_color, fontsize=10, alpha=0.6, va='top')
-        
-        # 7. Current Price Tag
-        last_row = df.iloc[-1]
-        current_price = last_row['Close']
-        tag_color = up_color if current_price >= last_row['Open'] else down_color
-        
-        ax.axhline(y=current_price, color=tag_color, linestyle='--', linewidth=0.8, alpha=0.7)
-        ax.text(
-            1.002, current_price,
-            f' {current_price:.2f} ',
-            transform=ax.get_yaxis_transform(),
-            color='white',
-            fontsize=10,
-            fontweight='normal',
-            va='center', ha='left',
-            bbox=dict(
-                boxstyle="square,pad=0.3",
-                facecolor=tag_color,
-                edgecolor=tag_color,
-                alpha=1.0
-            )
-        )
-        
-        # 7.1 VẼ CÁC MỨC FIBONACCI RETRACEMENT
-        fibo_levels = calculate_fibonacci_levels(df, window=100)
-        
-        if fibo_levels:
-            fibo_color = '#1E90FF'  # Dodger Blue color
-            
-            for level_name, price in fibo_levels.items():
-                # Xác định độ đậm dựa trên mức quan trọng
-                if level_name == '0.618':  # Golden Ratio - quan trọng nhất
-                    alpha = 0.9
-                    linewidth = 0.7
-                elif level_name == '0.5':  # Mức 50% - quan trọng
-                    alpha = 0.8
-                    linewidth = 0.6
-                else:
-                    alpha = 0.6
-                    linewidth = 0.6
-                
-                # Vẽ đường ngang Fibonacci
-                ax.axhline(y=price, color=fibo_color, linestyle='-', 
-                          linewidth=linewidth, alpha=alpha, zorder=1)
-                
-                # Vẽ nhãn giá bên phải
-                ax.text(
-                    1.002, price,
-                    f' Fibo {level_name}: {price:.2f} ',
-                    transform=ax.get_yaxis_transform(),
-                    color=fibo_color,
-                    fontsize=8,
-                    fontweight='bold' if level_name in ['0.618', '0.5'] else 'normal',
-                    va='center', ha='left',
-                    alpha=alpha,
-                    bbox=dict(
-                        boxstyle="square,pad=0.2",
-                        facecolor=bg_color,
-                        edgecolor=fibo_color,
-                        alpha=0.7,
-                        linewidth=0.5
-                    )
-                )
-            
-            logger.info(f"✅ Đã vẽ {len(fibo_levels)} mức Fibonacci Retracement.")
-
-        
-        # 8. Save
-        fig.savefig(filename, bbox_inches='tight', pad_inches=0.1, dpi=300, facecolor=fig.get_facecolor())
-        plt.close(fig)
-        
-        logger.info(f"✅ Đã lưu TradingView chart tại: {filename}")
-        return filename
-        
-    except ImportError:
-        logger.error("❌ Chưa cài tvDatafeed. Chạy: pip install --upgrade --no-cache-dir git+https://github.com/rongardF/tvdatafeed.git")
-        return None
-    except Exception as e:
-        logger.error(f"❌ Lỗi vẽ TradingView chart: {e}")
-        return None
-
 if __name__ == "__main__":
-    draw_price_chart()
+    # Test Full Flow
+    try:
+        df, source = get_market_data("XAUUSD")
+        if df is not None:
+             # Test Technical Analysis
+            print("--- Technical Analysis ---")
+            print(get_technical_analysis(df))
+            print("--------------------------")
+            
+            # Draw Chart
+            draw_price_chart("XAUUSD", df, source)
+    except Exception as e:
+        logger.error(f"Test Failed: {e}")
+

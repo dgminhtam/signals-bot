@@ -176,6 +176,7 @@ def get_unalerted_news(lookback_minutes: int = 30) -> List[Dict[str, Any]]:
                 SELECT id, title, content, published, source 
                 FROM articles 
                 WHERE is_alerted = 0 
+                AND status = 'NEW'
                 AND created_at >= datetime('now', ?)
                 ORDER BY created_at DESC
             ''', (f'-{lookback_minutes} minutes',))

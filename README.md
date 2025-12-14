@@ -82,51 +82,71 @@ Muốn thay đổi giọng văn của AI? Hãy sửa file `app/utils/prompts.py`
 
 ---
 
-## ▶️ Vận Hành
+## 🧪 Testing & Commands (Kiểm Thử Chức Năng)
+
+Để đảm bảo bot hoạt động ổn định, bạn có thể chạy test từng thành phần riêng lẻ bằng các câu lệnh sau:
+
+### 1. Test Daily Report (Báo Cáo Tổng Hợp)
+Chạy quy trình quét tin, phân tích AI, vẽ chart và gửi báo cáo Daily.
+Lưu ý: Job này chỉ gửi bài nếu có tin mới (status='NEW'). Nếu không có tin, nó sẽ log warning.
+
+```bash
+python -m app.jobs.daily_report
+```
+
+### 2. Test Real-time Alert (Cảnh Báo Nóng)
+Chạy worker quét tin nóng trong 20 phút gần nhất. Nếu phát hiện tin Breaking News chưa alert, nó sẽ gửi ngay lập tức.
+
+```bash
+python -m app.jobs.realtime_alert
+```
+
+### 3. Test Manual Mode (Chế Độ Thủ Công)
+Ép buộc chạy toàn bộ quy trình Main Flow ngay lập tức (Bỏ qua lịch trình scheduler, bỏ qua check ngày nghỉ). Rất hữu ích khi muốn test full flow.
+
+```bash
+python main.py --manual
+```
+
+### 4. Test Charter Service (Vẽ Biểu Đồ)
+Kiểm tra khả năng kết nối MT5/yfinance và vẽ biểu đồ.
+Kết quả sẽ tạo file ảnh tại `images/chart_price.png`.
+
+```bash
+python -m app.services.charter
+```
+
+### 5. Test Economic Calendar (Lịch Kinh Tế)
+Test module crawler lịch kinh tế và cơ chế gửi cảnh báo sự kiện (Pre-alert / Post-alert).
+
+```bash
+python -m app.jobs.economic_calendar
+```
+
+Hoặc chạy script giả lập để test bắn tin (nếu có):
+```bash
+python test_simulation_ec.py
+```
+
+### 6. Test Utility Scripts
+Nếu bạn có các script test nhỏ lẻ khác:
+
+*   **Test Crawl Tin Tức**: `python -m app.services.news_crawler` (In ra danh sách tin quét được)
+*   **Test Telegram Bot**: `python -m app.services.telegram_bot` (Gửi tin nhắn test)
+
+---
+
+## ▶️ Vận Hành (Production)
 
 ### Chạy Bot (Auto Mode)
-Chỉ cần chạy file `main.py`. Bot sẽ tự khởi động scheduler và các job.
+Chỉ cần chạy file `main.py`. Bot sẽ tự khởi động scheduler và các job theo lịch trình định sẵn.
 
 ```bash
 python main.py
 ```
-
-### Chế độ chạy thủ công (Manual Mode)
-Thêm các tham số để ép bot chạy ngay lập tức (bỏ qua check giờ/ngày nghỉ):
-
-- **Chạy toàn bộ quy trình (Scan + Report + Alert)**:
-  ```bash
-  python main.py --manual
-  ```
-- **Chỉ chạy Báo cáo (Scan + Report)**:
-  ```bash
-  python main.py --report
-  ```
-- **Chỉ chạy Alert (Quét tin nóng)**:
-  ```bash
-  python main.py --alert
-  ```
 
 ### Theo dõi Log
 Bot sẽ in log chi tiết ra màn hình console và lưu vào file `app.log`.
 - `INFO`: Thông báo bình thường (Quét tin, Gửi bài).
 - `WARNING`: Lỗi nhẹ (Không lấy được tin 1 nguồn, AI response lag).
 - `ERROR`: Lỗi cần kiểm tra (Mất kết nối DB, API Key lỗi).
-
----
-
-## ❓ FAQ / Troubleshooting
-
-**Q: Bot báo "Không có tin mới" liên tục?**
-A: Có thể do đã quét hết tin trong 24h qua. Hãy thử xóa file `xauusd_news.db` để bot quét lại từ đầu, hoặc đợi có tin thị trường mới.
-
-**Q: Làm sao để thay đổi giờ chạy?**
-A: Mở file `main.py`, tìm phần `schedule.every().day.at("...")` và sửa giờ theo ý muốn.
-
-**Q: Chart không vẽ được?**
-A: Kiểm tra kết nối mạng (cần download dữ liệu `yfinance`). Đảm bảo folder `images/` có quyền ghi (bot sẽ tự tạo nếu chưa có).
-
-**Q: Muốn bot chạy 24/7 trên VPS?**
-A: Sử dụng `screen` hoặc `docker` để treo bot.
-Lệnh Screen cơ bản:
-`screen -S bot` -> `python main.py` -> `Ctrl+A, D` (để thoát ra mà bot vẫn chạy).
