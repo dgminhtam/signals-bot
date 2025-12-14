@@ -8,6 +8,7 @@ from app.services import ai_engine
 from app.services import telegram_bot
 from app.services import news_crawler
 from app.core import config
+from app.utils.helpers import get_random_cta
 
 logger = config.logger
 
@@ -56,7 +57,12 @@ def main():
                 trend_icon = "🟢" if score > 0 else "🔴" if score < 0 else "🟡"
                 trend_text = "BULLISH" if score > 0 else "BEARISH" if score < 0 else "NEUTRAL"
                 
+                # Sửa tin nhắn Alert để thêm CTA
+                cta_text = get_random_cta()
+
                 message = f"""
+{cta_text}
+
 🚨 <b>BREAKING NEWS</b> 🚨
 
 {headline}

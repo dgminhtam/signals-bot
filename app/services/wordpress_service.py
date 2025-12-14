@@ -7,6 +7,7 @@ from urllib3.util.retry import Retry
 from typing import Optional, Dict, Any
 import logging
 import markdown
+import re
 from app.core import config
 
 logger = config.logger
@@ -81,16 +82,21 @@ class WordPressService:
         Chuyển đổi nội dung Telegram (Markdown-style) sang HTML cho WordPress
         """
         try:
-            # Basic markdown conversion
+            # 1. Pre-process hashtags to prevent Markdown Header collision (e.g. #Tag -> <h1>Tag</h1>)
+            # Wrap hashtags in <span> BEFORE Markdown conversion
+            # Regex: Hashtag preceded by space or start of line
+            telegram_content = re.sub(r'(^|\s)(#\w+)', r'\1<span class="hashtag">\2</span>', telegram_content)
+
+            # 2. Markdown Conversion
             html_content = markdown.markdown(
                 telegram_content,
                 extensions=['nl2br', 'markdown.extensions.tables']
             )
             
-            # Additional formatting for WordPress
+            # 3. Additional formatting for WordPress
             html_content = html_content.replace('**', '<strong>').replace('**', '</strong>')
             html_content = html_content.replace('__', '<em>').replace('__', '</em>')
-            
+
             return html_content
         except Exception as e:
             logger.error(f"❌ Lỗi convert Markdown->HTML: {e}")

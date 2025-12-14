@@ -7,6 +7,7 @@ from app.services import ai_engine
 from app.services import charter
 from app.services import telegram_bot
 from app.core import config 
+from app.utils.helpers import get_random_cta
 
 logger = config.logger
 
@@ -61,7 +62,12 @@ def format_telegram_message(data: Dict[str, Any], articles: List[Dict[str, Any]]
     now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
 
     # 6. Ghép nội dung
+    
+    # Lấy câu CTA ngẫu nhiên
+    cta_text = get_random_cta()
+    
     message = (
+        f"{cta_text}\n\n"
         f"🔥 <b>{headline}</b> 🔥\n"
         f"<i>⏰ Cập nhật: {now_str}</i>\n\n"
         
