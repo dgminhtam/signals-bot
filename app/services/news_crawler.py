@@ -50,12 +50,8 @@ def get_full_content(url: str, selector: str = None) -> str:
         # 2. Fallback: Tự động đoán nếu chưa tìm thấy
         if not paragraphs:
             # CMS Detection Fallback (Legacy)
-            if "kitco.com" in url:
-                paragraphs = soup.select("div.article-body p")
-            elif "cnn.com" in url:
+            if "cnn.com" in url:
                 paragraphs = soup.select("div.article__content p")
-            elif "investing.com" in url:
-                paragraphs = soup.select("div.WYSIWYG p")
             else:
                 paragraphs = soup.find_all('p')
             

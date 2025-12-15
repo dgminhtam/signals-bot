@@ -91,7 +91,7 @@ def format_telegram_message(data: Dict[str, Any], articles: List[Dict[str, Any]]
         for art in articles:
             source = art.get('source', '')
             if source:
-                # Cleanup: "RSS CNN Money" -> "#cnnmoney", "Kitco News" -> "#kitconews"
+                # Cleanup: "RSS CNN Money" -> "#cnnmoney", "CNBC World" -> "#cnbcworld"
                 tag = source.lower().replace('rss', '').replace(' ', '').replace('.', '').strip()
                 if tag:
                     hashtags.add(f"#{tag}")

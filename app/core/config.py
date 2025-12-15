@@ -50,20 +50,14 @@ NEWS_SOURCES = [
     {
         "name": "CNN Money",
         "rss": "http://rss.cnn.com/rss/money_markets.rss",
-        "web": "https://edition.cnn.com/business/markets",
-        "selector": "div.article__content p" # Optional: CSS selector for content
+        "web": "https://edition.cnn.com/",
+        "selector": "div.article__content p"
     },
     {
         "name": "CNBC World",
         "rss": "https://www.cnbc.com/id/100727362/device/rss/rss.html",
         "web": "https://www.cnbc.com/precious-metals/",
-        "selector": None # Use default <p>
-    },
-    {
-        "name": "Kitco News",
-        "rss": "https://www.kitco.com/rss/category/commodities.xml", # Example
-        "web": "https://www.kitco.com/news/commodities",
-        "selector": "div.article-body p"
+        "selector": None
     }
 ]
 
