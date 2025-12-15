@@ -1,0 +1,48 @@
+======================================================================
+Testing: investinglive.com/feed/news (current config)
+URL: https://investinglive.com/feed/news
+======================================================================
+Status Code: 200
+Content-Type: application/rss+xml; charset=utf-8
+Content Length: 96186 bytes
+Feed Title: Investinglive RSS Breaking news Feed
+Feed Entries: 25
+✅ Valid RSS Feed!
+
+First Entry:
+  - Title: China signals more policy support (same old?) as economy 'stabilises' in November
+  - Link: https://investinglive.com/news/china-signals-more-policy-support-same-old-as-economy-stabilises-in-november-20251215/
+  - Published: Mon, 15 Dec 2025 02:31:43 GMT
+
+======================================================================
+Testing: forexlive.com/feed (correct URL)
+URL: https://www.forexlive.com/feed/
+======================================================================
+Status Code: 200
+Content-Type: application/rss+xml; charset=utf-8
+Content Length: 71352 bytes
+Feed Title: Investinglive RSS Breaking News Feed
+Feed Entries: 25
+✅ Valid RSS Feed!
+
+First Entry:
+  - Title: Citi forecasts 2 RBA rate hikes in 2026, February followed by May, as inflation risks rise
+  - Link: https://investinglive.com/centralbank/citi-forecasts-2-rba-rate-hikes-in-2026-february-followed-by-may-as-inflation-risks-rise-20251215/
+  - Published: Mon, 15 Dec 2025 04:04:56 GMT
+
+======================================================================
+Testing: forexlive.com/feed/news (old config)
+URL: https://www.forexlive.com/feed/news
+======================================================================
+Status Code: 200
+Content-Type: application/rss+xml; charset=utf-8
+Content Length: 96186 bytes
+Feed Title: Investinglive RSS Breaking news Feed
+Feed Entries: 25
+✅ Valid RSS Feed!
+
+First Entry:
+  - Title: China signals more policy support (same old?) as economy 'stabilises' in November
+  - Link: https://investinglive.com/news/china-signals-more-policy-support-same-old-as-economy-stabilises-in-november-20251215/
+  - Published: Mon, 15 Dec 2025 02:31:43 GMT
+

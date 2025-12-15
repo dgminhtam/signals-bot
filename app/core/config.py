@@ -55,7 +55,7 @@ NEWS_SOURCES = [
     },
     {
         "name": "ForexLive",
-        "rss": "https://www.forexlive.com/feed/news",
+        "rss": "https://investinglive.com/feed/news",
         "web": "https://www.forexlive.com/",
         "selector": None  # Generic fallback
     },

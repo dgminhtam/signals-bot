@@ -16,7 +16,12 @@ KEYWORDS = {
     "DIRECT": config.KEYWORDS_DIRECT,
     "CORRELATION": config.KEYWORDS_CORRELATION
 }
+
 HEADERS = config.HEADERS
+# RSS Headers: Simplified to avoid compression/encoding issues with feedparser
+RSS_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+}
 
 
 def clean_html(raw_html: str) -> str:
@@ -40,12 +45,14 @@ def get_full_content(url: str, selector: str = None) -> str:
         if response.status_code != 200: 
             return "Lỗi truy cập (Chặn Bot)"
         
-        soup = BeautifulSoup(response.content, 'html.parser')
+
+        soup = BeautifulSoup(response.content, 'html.parser', from_encoding=response.encoding)
         
         paragraphs = []
         # 1. Dùng Selector nếu có cấu hình
         if selector:
             paragraphs = soup.select(selector)
+
         
         # 2. Fallback: Lấy tất cả thẻ <p> (Generic approach)
         if not paragraphs:
@@ -56,14 +63,28 @@ def get_full_content(url: str, selector: str = None) -> str:
     except Exception as e:
         return f"Lỗi cào dữ liệu: {e}"
 
+
 def get_rss_feed_data(url: str):
     try:
-        response = requests.get(url, headers=HEADERS, timeout=30)
+        # Use simplified RSS_HEADERS to avoid compression issues
+        headers = RSS_HEADERS
+        
+        # Investing.com blocks python-requests sometimes, need to mimic browser more but keep it light
+        if "investing.com" in url:
+             headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Referer": "https://www.google.com/",
+                "Upgrade-Insecure-Requests": "1"
+             }
+
+        response = requests.get(url, headers=headers, timeout=30)
         response.raise_for_status()
         return feedparser.parse(response.content)
     except Exception as e:
         logger.error(f"⚠️ RSS {url} lỗi: {e}")
         return None
+
+
 
 def scrape_website_fallback(source_config: Dict) -> List[Dict]:
     """Cào trực tiếp website nếu RSS lỗi (Dynamic URL)"""
@@ -75,11 +96,14 @@ def scrape_website_fallback(source_config: Dict) -> List[Dict]:
 
     logger.info(f"🔄 Đang kích hoạt Web Scraping cho {source_name} ({url})...")
     entries = []
+
     try:
         response = requests.get(url, headers=HEADERS, timeout=15)
-        soup = BeautifulSoup(response.content, 'html.parser')
+        # Fix encoding warning by telling BS4 what requests detected
+        soup = BeautifulSoup(response.content, 'html.parser', from_encoding=response.encoding)
         
         # Heuristic: Tìm tất cả thẻ A có text đủ dài
+
         links = soup.find_all('a', href=True)
         seen_titles = set()
         
