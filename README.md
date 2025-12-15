@@ -44,6 +44,15 @@
 - **Risk Management**: Dynamic SL/TP dựa trên Fibonacci levels
 - **Schedule**: Mỗi giờ tại phút :02 (sau khi nến H1 đóng)
 
+### 5. Economic Calendar Integration
+- **Source**: Investing.com Economic Calendar API
+- **Frequency**: Cập nhật mỗi 5 phút
+- **Features**:
+  - Tự động theo dõi các sự kiện kinh tế quan trọng
+  - Lọc theo độ ưu tiên (High/Medium/Low Impact)
+  - Cảnh báo trước các sự kiện ảnh hưởng đến XAU/USD
+  - Tích hợp vào phân tích AI để tăng độ chính xác
+
 ---
 
 ## 📂 Cấu Trúc Dự Án

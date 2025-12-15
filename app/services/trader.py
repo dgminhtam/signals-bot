@@ -1,7 +1,10 @@
-
+"""
+AutoTrader - AI-Sentiment + Fibonacci/Volume Strategy
+"""
 import logging
-from app.services.charter import get_market_data, get_technical_analysis, _analyze_trend
+from app.services.charter import get_market_data, calculate_fibonacci_levels
 from app.services.mt5_bridge import MT5DataClient
+from app.core import database
 
 logger = logging.getLogger(__name__)
 
@@ -13,40 +16,77 @@ class AutoTrader:
         
     def analyze_and_trade(self):
         """
-        Quy trình: 
-        1. Lấy dữ liệu 
-        2. Phân tích (Trend, Fibo) 
-        3. Ra quyết định 
-        4. Vào lệnh (nếu thỏa mãn)
+        AI-Sentiment Trading Strategy:
+        1. Lấy AI Sentiment từ Database
+        2. Lấy Market Data (Price + Volume)
+        3. Xác định Direction (AI Trend + Score)
+        4. Volume Confirmation
+        5. Fibonacci SL/TP
+        6. Execute
         """
-        logger.info(f"🤖 Starting Analysis for {self.symbol}...")
+        logger.info(f"🤖 Starting AI-Sentiment Analysis for {self.symbol}...")
         
-        # 1. Get Data
+        # ===== STEP 1: GET AI SENTIMENT =====
+        latest_report = database.get_latest_report()
+        
+        if not latest_report:
+            logger.warning("⚠️ No AI report found in database. Cannot trade without sentiment.")
+            return "WAIT_NO_SENTIMENT"
+        
+        ai_trend = latest_report.get('trend', 'NEUTRAL')
+        ai_score = latest_report.get('sentiment_score', 0)
+        
+        logger.info(f"📊 AI Report: Trend={ai_trend}, Score={ai_score}")
+        
+        # ===== STEP 2: GET MARKET DATA =====
         df, source = get_market_data(self.symbol)
         if df is None or df.empty:
-            logger.error("❌ No data received.")
+            logger.error("❌ No market data received.")
             return "FAIL_NO_DATA"
-            
-        # 2. Analyze Trend
-        trend = _analyze_trend(df) # "UP", "DOWN", "NEUTRAL"
-        
-        # 3. Analyze Fibo Levels for SL/TP
-        from app.services.charter import calculate_fibonacci_levels
-        fibo = calculate_fibonacci_levels(df)
         
         current_price = df['Close'].iloc[-1]
+        logger.info(f"💰 Current Price: {current_price:.2f} (Source: {source})")
         
-        # 4. Trading Logic (Simple Trend Following)
-        # Rule: 
-        # - BUY if Trend UP. SL = Fibo Support (nearest). TP = Fibo Resistance (next).
-        # - SELL if Trend DOWN. SL = Fibo Resistance (nearest). TP = Fibo Support (next).
-        
+        # ===== STEP 3: DETERMINE DIRECTION (AI-BASED) =====
         signal = "WAIT"
-        sl = 0.0
-        tp = 0.0
         
-        # Find nearest Support/Resistance from Fibo
-        # (Simplified logic from charter.py)
+        # Logic: AI Trend + Score phải CÙNG CHIỀU
+        if ai_trend == "BULLISH" and ai_score > 0:
+            signal = "BUY"
+            logger.info("✅ AI Signal: BULLISH + Positive Score → BUY")
+        elif ai_trend == "BEARISH" and ai_score < 0:
+            signal = "SELL"
+            logger.info("✅ AI Signal: BEARISH + Negative Score → SELL")
+        else:
+            logger.info(f"⏸️ AI Signal: {ai_trend} (Score: {ai_score}) → WAIT (Không rõ ràng)")
+            return "WAIT_WEAK_SIGNAL"
+        
+        # ===== STEP 4: VOLUME CONFIRMATION =====
+        try:
+            if len(df) >= 20:
+                vol_sma20 = df['Volume'].tail(20).mean()
+                current_vol = df['Volume'].iloc[-1]
+                prev_vol = df['Volume'].iloc[-2]
+                
+                # Confirmation: Volume hiện tại hoặc nến trước > TB20
+                volume_confirmed = (current_vol > vol_sma20) or (prev_vol > vol_sma20)
+                
+                logger.info(f"📊 Volume: Current={int(current_vol):,}, Prev={int(prev_vol):,}, SMA20={int(vol_sma20):,}")
+                
+                if not volume_confirmed:
+                    logger.warning("⚠️ Volume thấp hơn TB20 → Tín hiệu yếu, bỏ qua lệnh.")
+                    return "WAIT_LOW_VOLUME"
+                else:
+                    logger.info("✅ Volume Confirmed: Có dòng tiền vào")
+            else:
+                logger.warning("⚠️ Không đủ dữ liệu để tính Volume (< 20 nến). Bỏ qua điều kiện Volume.")
+        except Exception as e:
+            logger.error(f"❌ Lỗi tính Volume: {e}. Bỏ qua điều kiện Volume.")
+        
+        # ===== STEP 5: FIBONACCI SL/TP =====
+        fibo = calculate_fibonacci_levels(df)
+        
+        # Find nearest Support/Resistance
         support = 0.0
         resistance = float('inf')
         
@@ -55,34 +95,31 @@ class AutoTrader:
                 support = price
             if price > current_price and price < resistance:
                 resistance = price
-                
-        if trend == "UP":
-            signal = "BUY"
-            sl = support if support > 0 else current_price - 10.0 # Fallback
+        
+        # Set SL/TP dựa trên Signal
+        sl = 0.0
+        tp = 0.0
+        
+        if signal == "BUY":
+            sl = support if support > 0 else current_price - 10.0  # Fallback
             tp = resistance if resistance != float('inf') else current_price + 10.0
-            
-            # Risk Management Check
-            if current_price - sl > (tp - current_price) * 2: 
-                # Nếu R:R quá xấu (SL xa hơn TP x2), bỏ qua ?? 
-                # (For simplicity, user didn't specify, so we just log)
-                logger.warning("⚠️ Risk/Reward unfavortable, but proceeding per simple logic.")
-
-        elif trend == "DOWN":
-            signal = "SELL"
+        elif signal == "SELL":
             sl = resistance if resistance != float('inf') else current_price + 10.0
             tp = support if support > 0 else current_price - 10.0
-
-        logger.info(f"🧠 Analysis Results: Trend={trend}, Price={current_price:.2f}")
-        logger.info(f"🎯 Signal: {signal} | SL: {sl:.2f} | TP: {tp:.2f}")
         
+        logger.info(f"🎯 Fibonacci Levels: Support={support:.2f}, Resistance={resistance:.2f}")
+        logger.info(f"🎯 Order Parameters: Signal={signal}, SL={sl:.2f}, TP={tp:.2f}")
+        
+        # ===== STEP 6: EXECUTE ORDER =====
         if signal in ["BUY", "SELL"]:
-            # 5. Execute
+            logger.info(f"🚀 AI Signal: {ai_trend} (Score: {ai_score}) | Volume: Confirmed | Decision: {signal}")
             logger.info(f"🚀 Executing {signal} order...")
+            
             response = self.client.execute_order(self.symbol, signal, self.volume, sl, tp)
             logger.info(f"📝 MT5 Response: {response}")
             return response
         else:
-            logger.info("⏸️ No valid signal (Trend NEUTRAL).")
+            logger.info("⏸️ No valid signal (Conditions not met).")
             return "WAIT"
 
 if __name__ == "__main__":

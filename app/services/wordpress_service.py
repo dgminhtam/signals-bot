@@ -181,8 +181,12 @@ class WordPressService:
             # Endpoint chuẩn từ cURL (wp/v2/elb_entry)
             endpoint = f"{self.url}/wp-json/wp/v2/elb_entry"
             
-            # Convert Telegram markdown -> HTML
-            html_content = self.convert_telegram_to_html(content)
+            # Convert Telegram markdown -> HTML (nếu chưa phải HTML)
+            # Check nếu content đã chứa HTML tags thì không convert nữa
+            if '<p>' in content or '<strong>' in content or '<br>' in content:
+                html_content = content  # Already HTML, skip conversion
+            else:
+                html_content = self.convert_telegram_to_html(content)
             
             # Embed image nếu có
             if image_url:
