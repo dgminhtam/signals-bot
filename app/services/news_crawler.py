@@ -1,15 +1,27 @@
 import feedparser
 import requests
-from bs4 import BeautifulSoup
 from datetime import datetime, timedelta, timezone
 from dateutil import parser
 import re
 import time
+import random
 import json
 from urllib.parse import urljoin
 from typing import List, Dict, Optional, Any
 from app.core import config
-from app.core import database # Updated import
+from app.core import database
+
+try:
+    from curl_cffi import requests as c_requests
+except ImportError:
+    c_requests = None
+    config.logger.warning("Thư viện 'curl_cffi' chưa được cài đặt. (pip install curl_cffi)")
+
+try:
+    from newspaper import Article
+except ImportError:
+    Article = None
+    config.logger.warning("Thư viện 'newspaper3k' chưa được cài đặt. (pip install newspaper3k lxml_html_clean)")
 
 logger = config.logger
 KEYWORDS = {
@@ -17,16 +29,47 @@ KEYWORDS = {
     "CORRELATION": config.KEYWORDS_CORRELATION
 }
 
-HEADERS = config.HEADERS
-# RSS Headers: Simplified to avoid compression/encoding issues with feedparser
-RSS_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-}
-
-
 def clean_html(raw_html: str) -> str:
     cleanr = re.compile('<.*?>')
     return re.sub(cleanr, '', raw_html).strip()
+
+
+def fetch_url(url: str) -> Optional[Any]:
+    """
+    Helper fetch data with rotation of impersonations to bypass TLS Blocking/403.
+    Returns: Response object or None
+    """
+    if not c_requests:
+        return None
+
+    # List allow rotation if failed
+    browsers = ["chrome120", "chrome110", "safari15_5"]
+    
+    for browser in browsers:
+        try:
+            logger.info(f"🌐 Fetching {url} (Impersonate: {browser})...")
+            response = c_requests.get(
+                url, 
+                impersonate=browser, 
+                timeout=30,
+                headers={"Referer": "https://www.google.com/"}
+            )
+            
+            if response.status_code == 200:
+                return response
+            elif response.status_code == 404:
+                logger.warning(f"❌ 404 Not Found: {url}")
+                return None # No need to retry 404
+            else:
+                logger.warning(f"⚠️ Status {response.status_code} with {browser}. Retrying next in 5s...")
+                time.sleep(5)
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Network error with {browser}: {e}. Retrying next in 5s...")
+            time.sleep(5)
+            
+    logger.error(f"❌ Failed to fetch {url} after all attempts.")
+    return None
 
 def check_keywords(text: str) -> List[str]:
     found_keywords = []
@@ -36,50 +79,50 @@ def check_keywords(text: str) -> List[str]:
         pattern = r"\b" + re.escape(kw.lower()) + r"\b"
         if re.search(pattern, text_lower):
             found_keywords.append(kw)
-    return list(set(found_keywords)) # Loại bỏ keyword trùng lặp
+    return list(set(found_keywords))
 
 def get_full_content(url: str, selector: str = None) -> str:
-    """Lấy nội dung bài viết full, hỗ trợ selector động"""
+    """
+    Lấy nội dung bài viết full sử dụng curl_cffi + newspaper3k.
+    Refactored to bypass Cloudflare and handle dynamic layouts.
+    """
+    if not c_requests or not Article:
+        return "Lỗi: Thiếu thư viện curl_cffi hoặc newspaper3k."
+
+    response = fetch_url(url)
+    if not response:
+        return "Lỗi kết nối (Network/Blocked)."
+        
     try:
-        response = requests.get(url, headers=HEADERS, timeout=10)
-        if response.status_code != 200: 
-            return "Lỗi truy cập (Chặn Bot)"
+        # Bước 2: Parsing - Dùng newspaper3k phân tích HTML
+        article = Article(url)
+        article.set_html(response.text) # Nạp HTML đã download (đã bypass TLS)
+        article.parse()
         
+        full_text = article.text.strip()
+        
+        # Bước 3: Extraction Result
+        if len(full_text) > 100:
+            return full_text
+        else:
+            # Fallback debug
+            return "Nội dung quá ngắn/bị ẩn (Newspaper parse failed)."
 
-        soup = BeautifulSoup(response.content, 'html.parser', from_encoding=response.encoding)
-        
-        paragraphs = []
-        # 1. Dùng Selector nếu có cấu hình
-        if selector:
-            paragraphs = soup.select(selector)
-
-        
-        # 2. Fallback: Lấy tất cả thẻ <p> (Generic approach)
-        if not paragraphs:
-            paragraphs = soup.find_all('p')
-            
-        full_text = "\\n\\n".join([p.get_text().strip() for p in paragraphs])
-        return full_text if len(full_text) > 200 else "Nội dung quá ngắn/bị ẩn."
     except Exception as e:
+        logger.error(f"❌ Error getting full content for {url}: {e}")
         return f"Lỗi cào dữ liệu: {e}"
 
 
 def get_rss_feed_data(url: str):
+    """Lấy dữ liệu RSS sử dụng fetch_url helper"""
     try:
-        # Use simplified RSS_HEADERS to avoid compression issues
-        headers = RSS_HEADERS
-        
-        # Investing.com blocks python-requests sometimes, need to mimic browser more but keep it light
-        if "investing.com" in url:
-             headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Referer": "https://www.google.com/",
-                "Upgrade-Insecure-Requests": "1"
-             }
-
-        response = requests.get(url, headers=headers, timeout=30)
-        response.raise_for_status()
+        response = fetch_url(url)
+        if not response:
+             return None
+             
+        # Parse content
         return feedparser.parse(response.content)
+
     except Exception as e:
         logger.error(f"⚠️ RSS {url} lỗi: {e}")
         return None
@@ -98,41 +141,87 @@ def scrape_website_fallback(source_config: Dict) -> List[Dict]:
     entries = []
 
     try:
-        response = requests.get(url, headers=HEADERS, timeout=15)
-        # Fix encoding warning by telling BS4 what requests detected
-        soup = BeautifulSoup(response.content, 'html.parser', from_encoding=response.encoding)
-        
-        # Heuristic: Tìm tất cả thẻ A có text đủ dài
+        # Use fetch_url (handles Chrome/Safari rotation)
+        response = fetch_url(url)
+        if not response:
+            return []
 
-        links = soup.find_all('a', href=True)
+        # Use newspaper3k Source to extract links (Smart discovery)
+        # We manually inject HTML to use curl_cffi's bypass
+        import newspaper
+        source = newspaper.Source(url)
+        source.html = response.text
+        source.parse() # Parses the HTML to find links
+        
+        if not source.articles:
+             logger.warning(f"Newspaper found 0 articles for {url}")
+             return []
+             
         seen_titles = set()
         
-        for a in links:
-            title = a.get_text().strip()
-            href = a['href']
+        for article in source.articles:
+            # article.url is available
+            # We don't have title yet unless we download/parse, 
+            # BUT newspaper sometimes extracts title from link text?
+            # actually source.articles usually just has URLs.
+            # We need to filter by URL or download to check title?
+            # Downloading every article is expensive (slow).
             
-            # Lọc rác
-            if len(title) < 20: continue
-            if "javascript:" in href or "mailto:" in href: continue
+            # Optimization: Filter URL string by keywords first?
+            # Keywords are usually in the slug.
+            
+            href = article.url
+            if not href: continue
              
-            # Chuẩn hóa URL dynamic bằng urljoin
-            full_link = urljoin(url, href)
+            # Keyword check in URL (fast filter)
+            # If not in URL, we might skip or have to download.
+            # Let's rely on URL Check for speed in fallback mode.
+            if not len(check_keywords(href)) > 0:
+                 continue
+
+            # If passed URL check, we can assume it's relevant, 
+            # OR we can try to fetch title? 
+            # Let's just use the URL as title placeholder or try to format it?
+            # Validating 100 links by downloading is too slow.
+            # Let's check if newspaper extracted any link text?
+            # source.articles is a list of Article objects.
+            # They don't have link text stored by default logic of Source.parse().
             
-            # Chỉ lấy tin có keyword
-            if not check_keywords(title):
+            # Alternative: Use BeautifulSoup to get Link Text (User wants to avoid BS4).
+            # But Link Text is vital for "Title".
+            # URL slug is often enough for title? e.g. /news/gold-price-hits-record
+            
+            # Let's attempt to format title from URL
+            fake_title = href.split('/')[-1].replace('-', ' ').title()
+            
+            if len(fake_title) < 10: 
                 continue
                 
-            if title in seen_titles: continue
-            seen_titles.add(title)
-
+            if href in seen_titles: continue
+            seen_titles.add(href)
+            
             entries.append({
-                "title": title,
-                "link": full_link,
+                "title": fake_title, # News crawler will fetch full content anyway and can update title? No.
+                # Actually, main logic uses Title for notification.
+                # Without real title, it looks ugly.
+                "link": href,
                 "summary": "",
                 "published": datetime.now(timezone.utc).isoformat()
             })
             
-        logger.info(f"✅ Web Scraping tìm thấy {len(entries)} bài viết tiềm năng.")
+        # Re-verify with BS4? No. User wants pure newspaper/no BS4.
+        # But using newspaper.Source doesn't give Titles without downloading.
+        # This is a trade-off.
+        
+        # ACTUALLY, strict "newspaper" usage might be worse if we lose Titles.
+        # But I can implement it.
+        # OR I can check if `newspaper` has a way to keep link text?
+        # No easy way in standard API.
+        
+        # Let's stick to newspaper Source but be aware of the title limitation.
+        # I will use the "cleaning URL" method for title.
+        
+        logger.info(f"✅ Web Scraping (Newspaper Source) tìm thấy {len(entries)} bài viết tiềm năng.")
         return entries
         
     except Exception as e:
@@ -241,7 +330,10 @@ def get_gold_news(lookback_minutes: Optional[int] = None) -> List[Dict[str, Any]
                     new_articles_count += 1
                     new_articles_added.append(news_item)
                 
-                time.sleep(1) # Delay nhẹ
+                # Polite Delay: Random sleep to avoid IP Ban/Rate Limit
+                sleep_time = random.uniform(3, 6)
+                logger.info(f"   ...Sleeping {sleep_time:.1f}s...")
+                time.sleep(sleep_time)
 
     logger.info("="*60)
     logger.info(f"✅ HOÀN TẤT! Đã thêm {new_articles_count} bài viết mới vào Database.")

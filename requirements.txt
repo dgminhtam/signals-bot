@@ -12,6 +12,9 @@ feedparser>=6.0.11
 websocket-client>=1.9.0
 cloudscraper>=1.2.71  # For Cloudflare bypass (Economic Calendar)
 urllib3>=2.0.0  # Required by requests
+curl_cffi>=0.6.0 # For TLS/JA3 impersonation
+newspaper3k>=0.2.8 # For article extraction
+lxml_html_clean # Required by newspaper3k in specific envs
 
 # Date & Time
 python-dateutil>=2.8.2

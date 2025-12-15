@@ -136,6 +136,7 @@ def main():
     parser.add_argument("--manual", action="store_true", help="Chạy thủ công ngay lập tức (Report + Alert)")
     parser.add_argument("--report", action="store_true", help="Chạy thủ công chỉ phần Report")
     parser.add_argument("--alert", action="store_true", help="Chạy thủ công chỉ phần Alert")
+    parser.add_argument("--crawler", action="store_true", help="Chạy thủ công chỉ phần News Crawler")
     
     args = parser.parse_args()
 
@@ -146,8 +147,11 @@ def main():
         job_scan_news(force=True)
         job_analyze_and_send(force=True)
     elif args.alert:
-        logger.info("�️ Running Manual Alert...")
+        logger.info("⚡ Running Manual Alert...")
         realtime_alert.main()
+    elif args.crawler:
+        logger.info("📰 Running Manual Crawler...")
+        job_scan_news(force=True)
     else:
         # Mặc định chạy Scheduler
         run_schedule()
