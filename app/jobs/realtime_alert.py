@@ -54,8 +54,9 @@ def main():
                 
             is_breaking = analysis.get('is_breaking', False)
             score = analysis.get('score', 0)
-            headline = analysis.get('headline', 'Breaking News')
-            quote = analysis.get('quote', '')
+            headline_vi = analysis.get('headline_vi', article['title'])
+            summary_vi = analysis.get('summary_vi', '')
+            impact_vi = analysis.get('impact_vi', '')
             
             # Logic override: Nếu tiêu đề chứa từ khóa cực mạnh, force Breaking luôn
             urgent_keywords = ["fed rate", "war", "nuclear", "tăng lãi suất", "chiến tranh"]
@@ -64,23 +65,20 @@ def main():
                 if score == 0: score = -5 
 
             if is_breaking:
-                logger.info(f"   🔥 BREAKING NEWS: {article['title']}")
+                logger.info(f"   🔥 BREAKING NEWS: {headline_vi}")
                 
                 # 3. Gửi ngay Telegram
                 trend_icon = "🟢" if score > 0 else "🔴" if score < 0 else "🟡"
                 trend_text = "BULLISH" if score > 0 else "BEARISH" if score < 0 else "NEUTRAL"
 
                 message = f"""
-🚨 <b>BREAKING NEWS</b> 🚨
+🚨 <b>{headline_vi}</b>
 
-{headline}
+📝 {summary_vi}
 
-{trend_icon} <b>Tác động:</b> {trend_text} (Score: {score})
-⏱ <b>Time:</b> {datetime.datetime.now().strftime('%H:%M')}
-
-📝 <b>Nội dung chính:</b>
-"{article['title']}"
-#Breaking #XAUUSD
+💥 <b>Tác động:</b> {impact_vi}
+{trend_icon} <b>Xu hướng:</b> {trend_text}
+#XAUUSD #Breaking
 """
                 # Check Image
                 image_url = article.get("image_url")

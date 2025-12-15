@@ -89,7 +89,10 @@ Nhiệm vụ: Đọc tin và phát hiện tin NÓNG (Breaking News) có thể l�
 Trả về JSON với các trường:
 1. "is_breaking": (Boolean) True nếu tin tác động MẠNH và NGAY LẬP TỨC. False nếu bình thường.
 2. "score": (Number) -10 (Bearish mạnh) đến +10 (Bullish mạnh). 0 là trung lập.
-3. "headline": (String) Tiêu đề < 15 từ, bắt đầu bằng icon (🔥, 🚨, 📉, 📈).
+3. "headline": (String) Tiêu đề gốc tiếng Anh.
+4. "headline_vi": (String) Tiêu đề dịch sang tiếng Việt (Văn phong báo chí tài chính, ngắn gọn).
+5. "summary_vi": (String) Tóm tắt nội dung chính trong 1-2 câu tiếng Việt.
+6. "impact_vi": (String) Đánh giá tác động/lý do quan trọng bằng tiếng Việt (VD: "Ủng hộ Fed tăng lãi suất", "Lo ngại chiến tranh").
 
 Quy tắc:
 - Chỉ True nếu thực sự quan trọng (High Impact). Thà bỏ sót tin nhỏ còn hơn spam tin rác.
