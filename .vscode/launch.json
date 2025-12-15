@@ -2,32 +2,56 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Run Main Analysis",
+            "name": "Python: Run Main (Auto)",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/run_analysis.py",
+            "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
             "justMyCode": true
         },
         {
-            "name": "Python: Debug RSS Feed",
+            "name": "Python: Run Main (Manual Report)",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/debug_rss.py",
+            "program": "${workspaceFolder}/main.py",
+            "args": ["--report"],
             "console": "integratedTerminal"
         },
         {
-            "name": "Python: Test Chart Generator",
+            "name": "Python: Run Main (Manual Alert)",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/charter.py",
+            "program": "${workspaceFolder}/main.py",
+            "args": ["--alert"],
             "console": "integratedTerminal"
         },
         {
-            "name": "Python: Run Test Flow",
+            "name": "Python: Run Main (Manual Trade)",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/test_flow.py",
+            "program": "${workspaceFolder}/main.py",
+            "args": ["--trade"],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Test Content Fetch (Scripts)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/test_content_fetch.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Test Investing (Scripts)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/test_investing.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Check Models (Scripts)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/check_models.py",
             "console": "integratedTerminal"
         }
     ]

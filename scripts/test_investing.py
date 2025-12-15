@@ -1,5 +1,10 @@
 
 import logging
+import sys
+import os
+# Thêm thư mục gốc vào sys.path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from app.services import news_crawler
 
 # Setup logging

@@ -7,8 +7,20 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- CẤU HÌNH PATH & FILE ---
-DB_NAME = "xauusd_news.db"
-LOG_FILE = "app.log"
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Data Dir
+DATA_DIR = os.path.join(ROOT_DIR, "data")
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR, exist_ok=True)
+DB_NAME = os.path.join(DATA_DIR, "xauusd_news.db")
+
+# Logs Dir
+LOGS_DIR = os.path.join(ROOT_DIR, "logs")
+if not os.path.exists(LOGS_DIR):
+    os.makedirs(LOGS_DIR, exist_ok=True)
+LOG_FILE = os.path.join(LOGS_DIR, "app.log")
+
 IMAGES_DIR = "images"
 
 # --- API KEYS ---

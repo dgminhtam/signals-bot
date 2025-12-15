@@ -3,6 +3,10 @@ Script kiểm tra kết nối và danh sách models khả dụng cho tất cả 
 Hỗ trợ: Gemini, OpenAI, Groq
 """
 import os
+import sys
+# Thêm thư mục gốc vào sys.path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from dotenv import load_dotenv
 
 load_dotenv()

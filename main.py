@@ -17,6 +17,8 @@ from app.services import news_crawler
 from app.jobs import daily_report
 from app.jobs import realtime_alert
 from app.jobs import economic_worker
+from app.jobs import economic_worker
+from app.services.trader import AutoTrader
 from app.core import config
 
 logger = config.logger
@@ -67,6 +69,29 @@ def job_analyze_and_send(force=False):
     except Exception as e:
         logger.error(f"❌ Lỗi khi phân tích: {e}", exc_info=True)
 
+def job_auto_trade(force=False):
+    """Job tự động giao dịch (Auto Trader)"""
+    # AutoTrader cũng chỉ chạy ngày thường
+    if not force and not is_weekday():
+        logger.info("🏖️ Cuối tuần - AutoTrader nghỉ.")
+        return
+
+    try:
+        logger.info("="*60)
+        mode = "MANUAL" if force else "AUTO"
+        logger.info(f"🤖 [{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}] STARING AUTO TRADER ({mode})...")
+        
+        # Init & Run
+        # Volume mặc định 0.01 (hoặc lấy từ config nếu muốn)
+        trader = AutoTrader("XAUUSD", volume=0.01)
+        trader.analyze_and_trade()
+        
+        logger.info("✅ Auto Trader Job Completed.")
+        logger.info("="*60)
+
+    except Exception as e:
+        logger.error(f"❌ Lỗi Auto Trader: {e}", exc_info=True)
+
 def run_schedule():
     """Hàm chạy Scheduler (Auto Mode)"""
     logger.info("🚀 KHỞI ĐỘNG SCHEDULER (Clean Architecture Version)...")
@@ -104,6 +129,10 @@ def run_schedule():
     logger.info("📅 Thiết lập Economic Calendar Worker: Chạy mỗi 5 phút")
     schedule.every(5).minutes.do(economic_worker.main)
     
+    # Auto Trader
+    logger.info("🤖 Thiết lập Auto Trader: Chạy mỗi giờ (phút 02)")
+    schedule.every().hour.at(":02").do(job_auto_trade)
+    
     logger.info(f"✅ Đã thiết lập jobs.")
     logger.info("♾️  Bắt đầu vòng lặp tự động...")
     
@@ -137,6 +166,7 @@ def main():
     parser.add_argument("--report", action="store_true", help="Chạy thủ công chỉ phần Report")
     parser.add_argument("--alert", action="store_true", help="Chạy thủ công chỉ phần Alert")
     parser.add_argument("--crawler", action="store_true", help="Chạy thủ công chỉ phần News Crawler")
+    parser.add_argument("--trade", action="store_true", help="Chạy thủ công Auto Trader")
     
     args = parser.parse_args()
 
@@ -149,6 +179,9 @@ def main():
     elif args.alert:
         logger.info("⚡ Running Manual Alert...")
         realtime_alert.main()
+    elif args.trade:
+        logger.info("🤖 Running Manual Trader...")
+        job_auto_trade(force=True)
     elif args.crawler:
         logger.info("📰 Running Manual Crawler...")
         job_scan_news(force=True)

@@ -1,43 +1,19 @@
-# Dependencies cho Signals Bot - XAU/USD News Analysis
-# Updated: 2025-12-12
-
-# Core Data Processing
-pandas>=2.3.3
-numpy>=2.3.2
-
-# Web & Network
+curl-cffi>=0.6.0
+newspaper3k>=0.2.8
+lxml-html-clean>=0.1.0
+feedparser>=6.0.0
+schedule>=1.2.0
+python-telegram-bot>=21.0
+google-generativeai>=0.8.0
+openai>=1.0.0
+groq>=0.9.0
+python-dotenv>=1.0.0
+yfinance>=0.2.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+mplfinance>=0.12.0
+MetaTrader5>=5.0.0
 requests>=2.31.0
-beautifulsoup4>=4.12.3
-feedparser>=6.0.11
-websocket-client>=1.9.0
-cloudscraper>=1.2.71  # For Cloudflare bypass (Economic Calendar)
-urllib3>=2.0.0  # Required by requests
-curl_cffi>=0.6.0 # For TLS/JA3 impersonation
-newspaper3k>=0.2.8 # For article extraction
-lxml_html_clean # Required by newspaper3k in specific envs
-
-# Date & Time
-python-dateutil>=2.8.2
-
-# AI & Analysis
-google-generativeai>=0.8.3  # Google Gemini
-openai>=1.0.0               # OpenAI ChatGPT
-groq>=0.4.0                 # Groq Cloud (Llama, Mixtral)
-
-# Charting & Visualization
-matplotlib>=3.10.0
-mplfinance>=0.12.10b0
-yfinance>=0.2.50
-
-# Telegram Bot
-python-telegram-bot>=22.5
-
-# Scheduler
-schedule>=1.2.2
-
-# Utilities
-python-dotenv>=1.0.1
-markdown>=3.5  # For WordPress HTML conversion
-
-# Note: sqlite3 is built-in with Python (no package needed)
-# Note: TvDatafeed is now vendored in app/services/tvdatafeed_client.py
+charset-normalizer>=3.3.0
+urllib3>=2.2.0
+markdown>=3.5.0
