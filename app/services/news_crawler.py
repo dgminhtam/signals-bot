@@ -47,13 +47,9 @@ def get_full_content(url: str, selector: str = None) -> str:
         if selector:
             paragraphs = soup.select(selector)
         
-        # 2. Fallback: Tự động đoán nếu chưa tìm thấy
+        # 2. Fallback: Lấy tất cả thẻ <p> (Generic approach)
         if not paragraphs:
-            # CMS Detection Fallback (Legacy)
-            if "cnn.com" in url:
-                paragraphs = soup.select("div.article__content p")
-            else:
-                paragraphs = soup.find_all('p')
+            paragraphs = soup.find_all('p')
             
         full_text = "\\n\\n".join([p.get_text().strip() for p in paragraphs])
         return full_text if len(full_text) > 200 else "Nội dung quá ngắn/bị ẩn."

@@ -45,19 +45,25 @@ KEYWORDS_CORRELATION = [
 ]
 
 # --- NEWS SOURCES CONFIG ---
-# Cấu hình danh sách nguồn tin (RSS + Web Fallback)
+# Nguồn tin chuyên sâu cho XAU/USD Trading (độ nhạy cao)
 NEWS_SOURCES = [
     {
-        "name": "CNN Money",
-        "rss": "http://rss.cnn.com/rss/money_markets.rss",
-        "web": "https://edition.cnn.com/",
-        "selector": "div.article__content p"
+        "name": "FXStreet",
+        "rss": "https://www.fxstreet.com/rss/news",
+        "web": "https://www.fxstreet.com/news",
+        "selector": None  # Generic fallback
     },
     {
-        "name": "CNBC World",
-        "rss": "https://www.cnbc.com/id/100727362/device/rss/rss.html",
-        "web": "https://www.cnbc.com/precious-metals/",
-        "selector": None
+        "name": "ForexLive",
+        "rss": "https://www.forexlive.com/feed/news",
+        "web": "https://www.forexlive.com/",
+        "selector": None  # Generic fallback
+    },
+    {
+        "name": "Investing.com",
+        "rss": "https://www.investing.com/rss/news_25.rss",
+        "web": "https://www.investing.com/news/commodities",
+        "selector": None  # Generic fallback
     }
 ]
 
