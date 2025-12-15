@@ -39,15 +39,21 @@ def init_db() -> None:
                     keywords TEXT,             -- Lưu list keyword dạng string
                     status TEXT DEFAULT 'NEW', -- NEW: Chưa AI xử lý, PROCESSED: Đã xong
                     is_alerted INTEGER DEFAULT 0, -- 0: Chưa alert, 1: Đã alert (Breaking News)
+                    image_url TEXT,            -- URL ảnh thumbnail
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
             
-            # Migration: Ensure is_alerted column exists (for existing DB)
+            # Migration: Ensure columns exist
             try:
                 c.execute("ALTER TABLE articles ADD COLUMN is_alerted INTEGER DEFAULT 0")
             except sqlite3.OperationalError:
-                pass # Column already exists
+                pass 
+
+            try:
+                c.execute("ALTER TABLE articles ADD COLUMN image_url TEXT")
+            except sqlite3.OperationalError:
+                pass
 
             # Tạo bảng reports
             c.execute('''
@@ -97,15 +103,16 @@ def save_to_db(item: Dict[str, Any]) -> bool:
             keywords_str = json.dumps(item["keywords"], ensure_ascii=False)
             
             c.execute('''
-                INSERT OR IGNORE INTO articles (id, source, title, published, content, keywords, status)
-                VALUES (?, ?, ?, ?, ?, ?, 'NEW')
+                INSERT OR IGNORE INTO articles (id, source, title, published, content, keywords, image_url, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'NEW')
             ''', (
                 item["id"],
                 item["source"],
                 item["title"],
                 item["published_at"],
                 item["content"],
-                keywords_str
+                keywords_str,
+                item.get("image_url")
             ))
             conn.commit()
             return True
@@ -173,7 +180,7 @@ def get_unalerted_news(lookback_minutes: int = 30) -> List[Dict[str, Any]]:
             # 'now', f'-{lookback_minutes} minutes'
             
             c.execute('''
-                SELECT id, title, content, published, source 
+                SELECT id, title, content, published, source, image_url
                 FROM articles 
                 WHERE is_alerted = 0 
                 AND status = 'NEW'

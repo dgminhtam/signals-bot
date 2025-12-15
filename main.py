@@ -97,8 +97,8 @@ def run_schedule():
     schedule.every().day.at("19:15").do(job_analyze_and_send)
     
     # Alert
-    logger.info("⚡ Thiết lập Real-time Alert: Chạy mỗi 15 phút")
-    schedule.every(15).minutes.do(realtime_alert.main)
+    logger.info("⚡ Thiết lập Real-time Alert: Chạy mỗi 1 phút (HFT Mode)")
+    schedule.every(1).minutes.do(realtime_alert.main)
 
     # Economic Calendar
     logger.info("📅 Thiết lập Economic Calendar Worker: Chạy mỗi 5 phút")

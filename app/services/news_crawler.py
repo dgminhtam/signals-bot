@@ -34,7 +34,7 @@ def clean_html(raw_html: str) -> str:
     return re.sub(cleanr, '', raw_html).strip()
 
 
-def fetch_url(url: str) -> Optional[Any]:
+def fetch_url(url: str, timeout: int = 30) -> Optional[Any]:
     """
     Helper fetch data with rotation of impersonations to bypass TLS Blocking/403.
     Returns: Response object or None
@@ -51,7 +51,7 @@ def fetch_url(url: str) -> Optional[Any]:
             response = c_requests.get(
                 url, 
                 impersonate=browser, 
-                timeout=30,
+                timeout=timeout,
                 headers={"Referer": "https://www.google.com/"}
             )
             
@@ -81,17 +81,21 @@ def check_keywords(text: str) -> List[str]:
             found_keywords.append(kw)
     return list(set(found_keywords))
 
-def get_full_content(url: str, selector: str = None) -> str:
+def get_full_content(url: str, selector: str = None) -> Dict[str, str]:
     """
     Lấy nội dung bài viết full sử dụng curl_cffi + newspaper3k.
-    Refactored to bypass Cloudflare and handle dynamic layouts.
+    Returns: Dict {"content": str, "image_url": str}
     """
+    error_res = {"content": "", "image_url": ""}
+    
     if not c_requests or not Article:
-        return "Lỗi: Thiếu thư viện curl_cffi hoặc newspaper3k."
+        error_res["content"] = "Lỗi: Thiếu thư viện curl_cffi hoặc newspaper3k."
+        return error_res
 
     response = fetch_url(url)
     if not response:
-        return "Lỗi kết nối (Network/Blocked)."
+        error_res["content"] = "Lỗi kết nối (Network/Blocked)."
+        return error_res
         
     try:
         # Bước 2: Parsing - Dùng newspaper3k phân tích HTML
@@ -100,23 +104,26 @@ def get_full_content(url: str, selector: str = None) -> str:
         article.parse()
         
         full_text = article.text.strip()
+        top_image = article.top_image
         
         # Bước 3: Extraction Result
         if len(full_text) > 100:
-            return full_text
+            return {"content": full_text, "image_url": top_image}
         else:
             # Fallback debug
-            return "Nội dung quá ngắn/bị ẩn (Newspaper parse failed)."
+            error_res["content"] = "Nội dung quá ngắn/bị ẩn (Newspaper parse failed)."
+            return error_res
 
     except Exception as e:
         logger.error(f"❌ Error getting full content for {url}: {e}")
-        return f"Lỗi cào dữ liệu: {e}"
+        error_res["content"] = f"Lỗi cào dữ liệu: {e}"
+        return error_res
 
 
-def get_rss_feed_data(url: str):
+def get_rss_feed_data(url: str, timeout: int = 30):
     """Lấy dữ liệu RSS sử dụng fetch_url helper"""
     try:
-        response = fetch_url(url)
+        response = fetch_url(url, timeout=timeout)
         if not response:
              return None
              
@@ -228,7 +235,7 @@ def scrape_website_fallback(source_config: Dict) -> List[Dict]:
         logger.error(f"❌ Lỗi Web Scraping {source_name}: {e}")
         return []
 
-def get_gold_news(lookback_minutes: Optional[int] = None) -> List[Dict[str, Any]]:
+def get_gold_news(lookback_minutes: Optional[int] = None, fast_mode: bool = False) -> List[Dict[str, Any]]:
     """
     Quét tin tức từ RSS và Web Fallback.
     Args:
@@ -258,19 +265,24 @@ def get_gold_news(lookback_minutes: Optional[int] = None) -> List[Dict[str, Any]
         rss_url = source.get("rss")
         selector = source.get("selector")
         
+        timeout_cfg = 10 if fast_mode else 30
+
         # 1. Thử RSS trước
         try:
-            feed = get_rss_feed_data(rss_url)
+            feed = get_rss_feed_data(rss_url, timeout=timeout_cfg)
             if feed and feed.entries:
                 entries = feed.entries
                 logger.info(f"-> RSS {source_name}: Quét {len(entries)} bài...")
             else:
                 raise Exception("RSS Empty/Fail")
         except:
-            # 2. RSS Lỗi -> Thử Web Scraping
-            logger.warning(f"⚠️ RSS {source_name} thất bại. Chuyển sang Web Scraping...")
-            entries = scrape_website_fallback(source)
-            is_fallback = True
+            # 2. RSS Lỗi -> Thử Web Scraping (Skip in Fast Mode)
+            if not fast_mode:
+                logger.warning(f"⚠️ RSS {source_name} thất bại. Chuyển sang Web Scraping...")
+                entries = scrape_website_fallback(source)
+                is_fallback = True
+            else:
+                 logger.warning(f"⚠️ RSS {source_name} thất bại. Skip Web Scraping (Fast Mode).")
         
         if not entries:
             continue
@@ -314,7 +326,9 @@ def get_gold_news(lookback_minutes: Optional[int] = None) -> List[Dict[str, Any]
                 logger.info(f"   [+] Tin mới ({'WEB' if is_fallback else 'RSS'}): {title[:50]}...")
                 
                 # Truyền selector vào hàm get_full_content
-                full_content = get_full_content(link, selector=selector)
+                extract_res = get_full_content(link, selector=selector)
+                full_content = extract_res.get("content", "")
+                image_url = extract_res.get("image_url")
                 
                 news_item = {
                     "id": link,
@@ -323,7 +337,8 @@ def get_gold_news(lookback_minutes: Optional[int] = None) -> List[Dict[str, Any]
                     "title": title,
                     "keywords": matched_kws,
                     "url": link,
-                    "content": full_content
+                    "content": full_content,
+                    "image_url": image_url
                 }
                 
                 if database.save_to_db(news_item):
@@ -331,9 +346,10 @@ def get_gold_news(lookback_minutes: Optional[int] = None) -> List[Dict[str, Any]
                     new_articles_added.append(news_item)
                 
                 # Polite Delay: Random sleep to avoid IP Ban/Rate Limit
-                sleep_time = random.uniform(3, 6)
-                logger.info(f"   ...Sleeping {sleep_time:.1f}s...")
-                time.sleep(sleep_time)
+                if not fast_mode:
+                    sleep_time = random.uniform(3, 6)
+                    logger.info(f"   ...Sleeping {sleep_time:.1f}s...")
+                    time.sleep(sleep_time)
 
     logger.info("="*60)
     logger.info(f"✅ HOÀN TẤT! Đã thêm {new_articles_count} bài viết mới vào Database.")

@@ -48,9 +48,10 @@ breaking_news_schema = {
      "properties": {
           "is_breaking": {"type": "BOOLEAN"},
           "score": {"type": "NUMBER"},
-          "headline": {"type": "STRING"}
+          "headline": {"type": "STRING"},
+          "quote": {"type": "STRING"}
      },
-     "required": ["is_breaking", "score", "headline"]
+     "required": ["is_breaking", "score", "headline", "quote"]
 }
 
 economic_schema = {

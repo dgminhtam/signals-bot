@@ -24,8 +24,14 @@ async def send_report_to_telegram(report_content: str, image_paths: List[str]) -
         bot = Bot(token=TELEGRAM_TOKEN)
         media_group = []
         
-        # 1. Xử lý ảnh (Chỉ lấy ảnh tồn tại)
-        valid_images = [img for img in image_paths if img and os.path.exists(img)]
+        # 1. Xử lý ảnh (Chấp nhận cả Local File và URL)
+        valid_images = []
+        for img in image_paths:
+            if img:
+                if img.startswith("http"): # URL
+                    valid_images.append(img)
+                elif os.path.exists(img): # Local file
+                    valid_images.append(img)
         
         if not valid_images:
             # Nếu không có ảnh, chỉ gửi text
@@ -35,13 +41,24 @@ async def send_report_to_telegram(report_content: str, image_paths: List[str]) -
             # Telegram caption max 1024 ký tự, nếu dài hơn sẽ gửi riêng
             caption_text = report_content[:1024] if len(report_content) <= 1024 else report_content[:1020] + "..."
             
-            with open(valid_images[0], 'rb') as photo:
-                await bot.send_photo(
+            first_img = valid_images[0]
+            if first_img.startswith("http"):
+                 # Gửi URL trực tiếp
+                 await bot.send_photo(
                     chat_id=TELEGRAM_CHAT_ID, 
-                    photo=photo,
+                    photo=first_img,
                     caption=caption_text,
                     parse_mode='HTML'
                 )
+            else:
+                # Gửi Local File
+                with open(first_img, 'rb') as photo:
+                    await bot.send_photo(
+                        chat_id=TELEGRAM_CHAT_ID, 
+                        photo=photo,
+                        caption=caption_text,
+                        parse_mode='HTML'
+                    )
             
             # Nếu text quá dài, gửi phần còn lại
             if len(report_content) > 1024:
