@@ -87,6 +87,31 @@ def main():
                 else:
                      telegram_bot.send_message(message)
                 
+                # 4. Gửi WordPress Liveblog
+                try:
+                    from app.services.wordpress_service import wordpress_service
+                    
+                    if wordpress_service.enabled:
+                        logger.info("🌐 Đang gửi Breaking News lên WordPress...")
+                        
+                        # Tiêu đề entry
+                        wp_title = f"🚨 {headline_vi}"
+                        
+                        # Nội dung HTML (Construct manual HTML to be safe)
+                        wp_content = f"""
+                        <p>📝 {summary_vi}</p>
+                        <p>💥 <strong>Tác động:</strong> {impact_vi}</p>
+                        <p>{trend_icon} <strong>Xu hướng:</strong> {trend_text}</p>
+                        """
+                        
+                        wordpress_service.create_liveblog_entry(
+                            title=wp_title,
+                            content=wp_content, 
+                            image_url=image_url
+                        )
+                except Exception as e:
+                    logger.error(f"❌ Lỗi gửi WP: {e}")
+                
                 # 4. Đánh dấu đã Alert
                 database.mark_article_alerted(article['id'])
                 
