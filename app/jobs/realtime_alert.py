@@ -23,13 +23,13 @@ def main():
         # để đảm bảo cả những tin vừa scan ở bước khác cũng được tính.
         # 2. Crawler update
         # Sử dụng fast_mode=True và lookback ngắn (5 phút) cho HFT
-        news_crawler.get_gold_news(lookback_minutes=6000, fast_mode=True)
+        news_crawler.get_gold_news(lookback_minutes=5, fast_mode=True)
         
         # 3. Lấy tin trong 5 phút qua
-        recent_articles = database.get_unalerted_news(lookback_minutes=6000)
+        recent_articles = database.get_unalerted_news(lookback_minutes=5)
 
         if not recent_articles:
-            logger.info("   -> Không có tin mới chưa xử lý trong 20 phút qua.")
+            logger.info("   -> Không có tin mới chưa xử lý trong 5 phút qua.")
             logger.info("⚡ [ALERT WORKER] HOÀN TẤT.")
             return
 
