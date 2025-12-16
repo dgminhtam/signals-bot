@@ -26,6 +26,11 @@ class AutoTrader:
         """
         logger.info(f"🤖 Starting AI-Sentiment Analysis for {self.symbol}...")
         
+        # ===== STEP 0: CHECK NEWS FILTER =====
+        upcoming_news = database.check_upcoming_high_impact_news(minutes=30)
+        if upcoming_news:
+            logger.warning(f"⛔ DỪNG GIAO DỊCH: Sắp có tin mạnh \"{upcoming_news}\" trong 30 phút tới.")
+            return "WAIT_NEWS_EVENT"
         # ===== STEP 1: GET AI SENTIMENT =====
         latest_report = database.get_latest_report()
         

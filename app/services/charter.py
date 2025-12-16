@@ -161,14 +161,22 @@ def calculate_fibonacci_levels(df: pd.DataFrame, window: int = 120) -> Dict[str,
         return {}
 
 
-def _analyze_trend(df: pd.DataFrame) -> str:
+def _analyze_trend(df: pd.DataFrame, ai_trend: str = None) -> str:
     """
-    Xác định xu hướng nhanh dựa trên Price vs SMA20
+    Xác định xu hướng.
+    Ưu tiên AI Trend (nếu có). Fallback về SMA20.
     Returns: "UP" | "DOWN" | "NEUTRAL"
     """
+    # 1. AI Override
+    if ai_trend:
+        t_upper = ai_trend.upper()
+        if "BULLISH" in t_upper: return "UP"
+        if "BEARISH" in t_upper: return "DOWN"
+        return "NEUTRAL"
+
+    # 2. Technical Fallback (SMA20)
     try:
         if len(df) < 20:
-             # Fallback to Price vs Prev Close if not enough data
              return "UP" if df['Close'].iloc[-1] >= df['Close'].iloc[-2] else "DOWN"
         
         sma20 = df['Close'].tail(20).mean()
@@ -223,7 +231,7 @@ def _prepare_volume_plots(plot_df: pd.DataFrame, up_color: str, down_color: str)
         logger.error(f"❌ Error preparing volume plots: {e}")
         return []
 
-def draw_price_chart(symbol: str = "XAUUSD", df: Optional[pd.DataFrame] = None, data_source: str = "Unknown") -> Optional[str]:
+def draw_price_chart(symbol: str = "XAUUSD", df: Optional[pd.DataFrame] = None, data_source: str = "Unknown", ai_trend: str = None) -> Optional[str]:
     """
     Vẽ biểu đồ giá với Fibonacci levels
     
@@ -231,6 +239,7 @@ def draw_price_chart(symbol: str = "XAUUSD", df: Optional[pd.DataFrame] = None, 
         symbol: Symbol để vẽ (dùng cho tiêu đề)
         df: DataFrame chứa dữ liệu OHLC (nếu None sẽ tự động lấy)
         data_source: Tên nguồn dữ liệu (để hiển thị và quyết định vẽ Volume)
+        ai_trend: Xu hướng từ AI (BULLISH/BEARISH/SIDEWAY)
     """
     logger.info(f"📈 Đang vẽ biểu đồ H1 (Pro Dark Style) cho {symbol}...")
     
@@ -448,15 +457,18 @@ def draw_price_chart(symbol: str = "XAUUSD", df: Optional[pd.DataFrame] = None, 
             
             logger.info(f"✅ Đã vẽ {len(fibo_levels)} mức Fibonacci Retracement.")
             
-        # 4.3 VẼ MŨI TÊN XU HƯỚNG (AI VIEWPOINT)
-        trend = _analyze_trend(df)
+        # 4.3 VẼ MŨI TÊN XU HƯỚNG (AI VIEWPOINT or MA20)
+        trend = _analyze_trend(df, ai_trend)
         arrow_color = up_color if trend == "UP" else down_color
         arrow_text = "TĂNG" if trend == "UP" else "GIẢM"
+        
+        # Nguồn xu hướng
+        trend_source = "AI" if ai_trend else "MA20"
         
         # Vị trí: Góc trên bên phải, dưới Price Tag
         # Dùng transAxes để cố định vị trí trên khung hình
         ax.annotate(
-            f"Xu hướng: {arrow_text}", 
+            f"Xu hướng ({trend_source}): {arrow_text}", 
             xy=(0.95, 0.92), xycoords='axes fraction',
             xytext=(0.95, 0.92), textcoords='axes fraction',
             fontsize=12, fontweight='bold', color=arrow_color,

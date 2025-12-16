@@ -295,3 +295,27 @@ def get_incomplete_events_today() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Lỗi get incomplete events: {e}")
         return []
+
+def check_upcoming_high_impact_news(minutes: int = 30) -> Optional[str]:
+    """
+    Kiểm tra xem có tin tức High Impact sắp diễn ra không.
+    Trả về Title của sự kiện nếu có, ngược lại trả về None.
+    """
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Lấy sự kiện High Impact trong khoảng (now, now + minutes)
+            # Timestamp trong DB là UTC
+            c.execute('''
+                SELECT title FROM economic_events
+                WHERE impact = 'High'
+                AND timestamp > datetime('now')
+                AND timestamp <= datetime('now', ?)
+            ''', (f'+{minutes} minutes',))
+            
+            row = c.fetchone()
+            return row['title'] if row else None
+            
+    except Exception as e:
+        logger.error(f"Lỗi check upcoming news: {e}")
+        return None

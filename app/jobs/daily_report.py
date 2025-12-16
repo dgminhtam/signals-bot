@@ -139,7 +139,13 @@ def main():
         logger.info("🎨 ĐANG VẼ BIỂU ĐỒ...")
         price_chart = None
         if market_df is not None:
-            price_chart = charter.draw_price_chart(df=market_df, data_source=source)
+             # Fix: Lấy xu hướng từ AI truyền vào chart
+            ai_trend_str = analysis_result.get('trend') if analysis_result else None
+            price_chart = charter.draw_price_chart(
+                df=market_df, 
+                data_source=source, 
+                ai_trend=ai_trend_str
+            )
             
         # Gom ảnh vào list để gửi
         image_list = []

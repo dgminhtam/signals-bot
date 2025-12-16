@@ -2,8 +2,8 @@ import time
 import html
 from typing import List, Dict
 import logging
-from datetime import datetime
-import cloudscraper
+from datetime import datetime, timedelta
+from curl_cffi import requests
 from bs4 import BeautifulSoup
 from dateutil import parser as date_parser
 from dateutil import tz
@@ -16,7 +16,7 @@ logger = config.logger
 
 class EconomicCalendarService:
     def __init__(self):
-        self.scraper = cloudscraper.create_scraper(browser='chrome')
+        # Refactor: Replace cloudscraper with curl_cffi
         self.base_url = "https://www.forexfactory.com/calendar"
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -24,15 +24,29 @@ class EconomicCalendarService:
         }
 
     def parse_datetime(self, date_str, time_str):
+        """
+        Fix Timezone: ForexFactory displays New York time by default (if not logged in).
+        We parse it as NY time, then convert to UTC.
+        """
         try:
             if not date_str or not time_str: return None
-            clean_date = " ".join(date_str.split()[1:]) 
+            
+            # Clean date string (remove Day name if present, e.g. "Mon Jan 1")
+            # Example: "Jan 1" -> "Jan 1 2024"
+            clean_date = " ".join(date_str.split()[1:]) if len(date_str.split()) > 1 else date_str
+            
+            # Parse naive datetime
             full_str = f"{clean_date} {datetime.now().year} {time_str}"
             dt_naive = date_parser.parse(full_str)
-            ny_tz = tz.gettz('America/New_York') or tz.gettz('US/Eastern')
+            
+            # Assign New York timezone
+            ny_tz = tz.gettz('America/New_York')
             dt_ny = dt_naive.replace(tzinfo=ny_tz)
+            
+            # Convert to UTC
             return dt_ny.astimezone(tz.UTC)
-        except Exception:
+        except Exception as e:
+            # logger.error(f"Date Parsing Error: {e} | Str: {date_str} {time_str}")
             return None
 
     def process_calendar_alerts(self):
@@ -87,7 +101,9 @@ class EconomicCalendarService:
     def send_pre_alert(self, event, minutes_left):
         try:
              ts = date_parser.parse(event['timestamp'])
-             time_str = ts.astimezone(tz.gettz('Asia/Ho_Chi_Minh')).strftime('%H:%M')
+             # Convert UTC to Vietnam Time for display
+             vn_tz = tz.gettz('Asia/Ho_Chi_Minh')
+             time_str = ts.astimezone(vn_tz).strftime('%H:%M')
         except:
              time_str = event['time']
 
@@ -146,21 +162,26 @@ class EconomicCalendarService:
 
     def fetch_events(self, day: str = "today") -> List[Dict]:
         url = f"{self.base_url}?day={day}"
-        logger.info(f"📅 Fetching Calendar: {url}")
+        logger.info(f"📅 Fetching Calendar (curl_cffi): {url}")
         
         try:
-            for attempt in range(3):
-                try:
-                    response = self.scraper.get(url, headers=self.headers, timeout=20)
-                    if response.status_code == 200: break
-                except Exception as e:
-                    time.sleep(2)
-            else:
+            # Refactor: Use curl_cffi with Chrome Impersonation
+            response = requests.get(
+                url, 
+                headers=self.headers, 
+                impersonate="chrome120", 
+                timeout=30
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"Failed to fetch calendar. Status: {response.status_code}")
                 return []
 
             soup = BeautifulSoup(response.content, "html.parser")
             table = soup.find("table", class_="calendar__table")
-            if not table: return []
+            if not table: 
+                logger.warning("No calendar table found.")
+                return []
             
             results = []
             rows = table.find_all("tr", class_="calendar__row")
@@ -174,12 +195,21 @@ class EconomicCalendarService:
                 event_id = row.get("data-event-id")
                 if not event_id: continue
 
+                # Filter Impact: High/Medium only? (Optional)
+                # Here we fetch ALL, but filter strictly for High Impact elsewhere if needed
+                # But to save DB space and focus, maybe we check for High Impact HERE?
+                # User request implied focusing on High Impact for safety, but didn't explicitly ask to filter fetch.
+                # However, logic in database checks for "High".
+                
                 is_red = False
                 impact_td = row.find("td", class_="calendar__impact")
                 if impact_td:
                     sp = impact_td.find("span")
                     if sp and "icon--ff-impact-red" in str(sp.get("class",[])):
                         is_red = True
+                
+                # Note: Currently we only fetch RED impact events based on logic below?
+                # Ah, original code had `if not is_red: continue`. I will keep that logic to ensure high quality signals.
                 if not is_red: continue
 
                 currency = row.find("td", class_="calendar__currency").text.strip()
@@ -191,13 +221,17 @@ class EconomicCalendarService:
                 
                 dt_utc = self.parse_datetime(current_date_str, result_time)
                 timestamp_iso = dt_utc.strftime('%Y-%m-%d %H:%M:%S') if dt_utc else None
+                
+                if not timestamp_iso:
+                     # Skip all-day events or unclear time
+                     continue
 
                 results.append({
                     "id": event_id,
                     "event": event_title, 
                     "title": event_title,
                     "currency": currency,
-                    "impact": "High",
+                    "impact": "High", # We only filtered Red
                     "time": result_time,
                     "date": current_date_str,
                     "timestamp": timestamp_iso,
@@ -208,5 +242,5 @@ class EconomicCalendarService:
             
             return results
         except Exception as e:
-            logger.error(f"Scrape Error: {e}")
+            logger.error(f"Scrape Error (curl_cffi): {e}")
             return []
