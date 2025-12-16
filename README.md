@@ -45,12 +45,14 @@
 - **Schedule**: Mỗi giờ tại phút :02 (sau khi nến H1 đóng)
 
 ### 5. Economic Calendar Integration
-- **Source**: Investing.com Economic Calendar API
-- **Frequency**: Cập nhật mỗi 5 phút
+- **Source**: Investing/ForexFactory Hybrid Engine
+- **Architecture**:
+  - **Schedule**: JSON API (High Performance, Cached 1h)
+  - **Result**: HTML Real-time Parser (curl_cffi, < 1s latency)
 - **Features**:
-  - Tự động theo dõi các sự kiện kinh tế quan trọng
-  - Lọc theo độ ưu tiên (High/Medium/Low Impact)
-  - Cảnh báo trước các sự kiện ảnh hưởng đến XAU/USD
+  - Tự động đồng bộ lịch sự kiện tuần
+  - Quét kết quả Actual ngay khi tin ra (Real-time)
+  - Cảnh báo trước (Pre-Alert) và sau tin (Post-Alert)
   - Tích hợp vào phân tích AI để tăng độ chính xác
 
 ---
@@ -236,6 +238,13 @@ News + Technical Data + Previous Report → AI (Gemini/GPT)
 ```
 Hourly Trigger → Market Data (TradingView/MT5) 
 → Trend Analysis → Fibonacci Levels → Order Execution (MT5)
+```
+
+### Economic Calendar Flow (Hybrid)
+```
+Schedule (JSON) → Cache/DB (Pending)
+       ↓
+Real-time Scanner (HTML/curl_cffi) → Update Actual → Alert System
 ```
 
 ---
