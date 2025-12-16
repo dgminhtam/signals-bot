@@ -91,59 +91,61 @@ class AutoTrader:
         except Exception as e:
             logger.error(f"❌ Lỗi tính Volume: {e}. Bỏ qua điều kiện Volume.")
         
-        # ===== STEP 5: FIBONACCI SL/TP & RISK MANAGEMENT =====
-        fibo = calculate_fibonacci_levels(df)
+        # ===== STEP 5: DETERMINE SL/TP (AI Priority -> Fibo Fallback) =====
         
-        # Find nearest Support/Resistance from Fibonacci
+        # 5.1 Check AI Signals
+        ai_sl = latest_report.get('stop_loss', 0.0)
+        ai_tp = latest_report.get('take_profit', 0.0)
+        ai_entry = latest_report.get('entry_price', 0.0)
+        
+        # Log AI Signal details
+        if ai_sl > 0 and ai_tp > 0:
+            logger.info(f"🧠 AI Explicit Signal Found: Entry={ai_entry}, SL={ai_sl}, TP={ai_tp}")
+        
+        # 5.2 Calculate Fibonacci (Always calc for reference or fallback)
+        fibo = calculate_fibonacci_levels(df)
         support = 0.0
         resistance = float('inf')
         
         if fibo:
             for price in fibo.values():
-                if price < current_price and price > support:
-                    support = price
-                if price > current_price and price < resistance:
-                    resistance = price
+                if price < current_price and price > support: support = price
+                if price > current_price and price < resistance: resistance = price
         
-        # Set SL/TP dựa trên Signal
+        # 5.3 Set SL/TP
         sl = 0.0
         tp = 0.0
         
-        # Fallback Risk Management (Nếu không tìm được Fibo)
-        FALLBACK_SL_PIPS = 5.0   # 5 giá
-        FALLBACK_TP_PIPS = 10.0  # 10 giá
+        # Logic: If AI SL/TP is valid -> Use AI. Else -> Use Fibo/Fallback.
+        if (ai_sl > 0 and ai_tp > 0):
+            sl = ai_sl
+            tp = ai_tp
+            logger.info(f"✅ Using AI-Defined Levels: SL={sl}, TP={tp}")
+            
+            # Optional: Validate AI SL/TP distance? 
+            # For now, trust AI.
+        else:
+            logger.info("ℹ️ AI did not provide explicit SL/TP. Using Fibonacci/Fallback.")
+            
+            # Fallback Risk Management
+            FALLBACK_SL_PIPS = 5.0
+            FALLBACK_TP_PIPS = 10.0
+            
+            if signal == "BUY":
+                if support > 0: sl = support
+                else: sl = current_price - FALLBACK_SL_PIPS
+                
+                if resistance != float('inf'): tp = resistance
+                else: tp = current_price + FALLBACK_TP_PIPS
+                    
+            elif signal == "SELL":
+                if resistance != float('inf'): sl = resistance
+                else: sl = current_price + FALLBACK_SL_PIPS
+                
+                if support > 0: tp = support
+                else: tp = current_price - FALLBACK_TP_PIPS
         
-        if signal == "BUY":
-            # SL tại Support gần nhất hoặc Price - 5 giá
-            if support > 0:
-                sl = support
-            else:
-                sl = current_price - FALLBACK_SL_PIPS
-                logger.warning(f"⚠️ No Fibo Support found. Using Fallback SL: {sl}")
-                
-            # TP tại Resistance gần nhất hoặc Price + 10 giá
-            if resistance != float('inf'):
-                tp = resistance
-            else:
-                tp = current_price + FALLBACK_TP_PIPS
-                logger.warning(f"⚠️ No Fibo Resistance found. Using Fallback TP: {tp}")
-                
-        elif signal == "SELL":
-            # SL tại Resistance gần nhất hoặc Price + 5 giá
-            if resistance != float('inf'):
-                sl = resistance
-            else:
-                sl = current_price + FALLBACK_SL_PIPS
-                logger.warning(f"⚠️ No Fibo Resistance found. Using Fallback SL: {sl}")
-                
-            # TP tại Support gần nhất hoặc Price - 10 giá
-            if support > 0:
-                tp = support
-            else:
-                tp = current_price - FALLBACK_TP_PIPS
-                logger.warning(f"⚠️ No Fibo Support found. Using Fallback TP: {tp}")
-        
-        logger.info(f"🎯 Order Parameters: Signal={signal}, SL={sl:.2f}, TP={tp:.2f} (Current: {current_price:.2f})")
+        logger.info(f"🎯 Final Order Params: Signal={signal}, SL={sl:.2f}, TP={tp:.2f} (Current: {current_price:.2f})")
         
         # ===== STEP 6: EXECUTE ORDER =====
         if signal in ["BUY", "SELL"]:

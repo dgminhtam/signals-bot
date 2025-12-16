@@ -159,7 +159,8 @@ def main():
             database.save_report(
                 content=analysis_result.get('headline', '') + "...", 
                 score=analysis_result.get('sentiment_score', 0),
-                trend=analysis_result.get('trend', 'N/A')
+                trend=analysis_result.get('trend', 'N/A'),
+                signal_data=analysis_result.get('trade_signal')
             )
             
             # Đánh dấu tin đã đọc

@@ -62,9 +62,22 @@ def init_db() -> None:
                     report_content TEXT,    -- Nội dung bài viết final
                     sentiment_score REAL,   -- Điểm số (-10 đến 10)
                     trend TEXT,             -- Bullish/Bearish/Neutral
+                    signal_type TEXT,       -- BUY/SELL/WAIT (AI Signal)
+                    entry_price REAL,
+                    stop_loss REAL,
+                    take_profit REAL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
+            
+            # Migration for existing reports table (Add columns if missing)
+            try:
+                c.execute("ALTER TABLE reports ADD COLUMN signal_type TEXT")
+                c.execute("ALTER TABLE reports ADD COLUMN entry_price REAL")
+                c.execute("ALTER TABLE reports ADD COLUMN stop_loss REAL")
+                c.execute("ALTER TABLE reports ADD COLUMN take_profit REAL")
+            except sqlite3.OperationalError:
+                pass # Columns likely exist
 
             # Tạo bảng economic_events (MỚI)
             c.execute('''
@@ -145,14 +158,29 @@ def mark_articles_processed(ids: List[str]) -> None:
     except Exception as e:
         logger.error(f"Lỗi cập nhật trạng thái bài viết: {e}")
 
-def save_report(content: str, score: float, trend: str) -> None:
+def save_report(content: str, score: float, trend: str, signal_data: Optional[Dict[str, Any]] = None) -> None:
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("INSERT INTO reports (report_content, sentiment_score, trend) VALUES (?, ?, ?)", 
-                      (content, score, trend))
+            
+            sig_type = None
+            entry = 0.0
+            sl = 0.0
+            tp = 0.0
+            
+            if signal_data:
+                sig_type = signal_data.get('order_type')
+                entry = signal_data.get('entry_price', 0.0)
+                sl = signal_data.get('sl', 0.0)
+                tp = signal_data.get('tp', 0.0)
+            
+            c.execute('''
+                INSERT INTO reports (report_content, sentiment_score, trend, signal_type, entry_price, stop_loss, take_profit) 
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (content, score, trend, sig_type, entry, sl, tp))
+            
             conn.commit()
-            logger.info("💾 Đã lưu báo cáo phân tích vào Database.")
+            logger.info("💾 Đã lưu báo cáo phân tích vào Database (có Signal).")
     except Exception as e:
         logger.error(f"Lỗi lưu báo cáo: {e}")
 
@@ -161,7 +189,7 @@ def get_latest_report() -> Optional[Dict[str, Any]]:
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT sentiment_score, trend, created_at FROM reports ORDER BY id DESC LIMIT 1")
+            c.execute("SELECT * FROM reports ORDER BY id DESC LIMIT 1")
             row = c.fetchone()
             return dict(row) if row else None
     except Exception as e:

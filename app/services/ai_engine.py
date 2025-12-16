@@ -39,8 +39,18 @@ analysis_schema = {
           "trend": {"type": "STRING"},
           "bullet_points": {"type": "ARRAY", "items": {"type": "STRING"}},
           "conclusion": {"type": "STRING"},
+          "trade_signal": {
+                "type": "OBJECT",
+                "properties": {
+                    "order_type": {"type": "STRING", "description": "BUY/SELL/WAIT"},
+                    "entry_price": {"type": "NUMBER"},
+                    "sl": {"type": "NUMBER"},
+                    "tp": {"type": "NUMBER"}
+                },
+                "required": ["order_type", "entry_price", "sl", "tp"]
+          }
      },
-     "required": ["reasoning", "headline", "sentiment_score", "trend", "bullet_points", "conclusion"]
+     "required": ["reasoning", "headline", "sentiment_score", "trend", "bullet_points", "conclusion", "trade_signal"]
 }
 
 breaking_news_schema = {
