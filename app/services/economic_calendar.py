@@ -104,8 +104,6 @@ class EconomicCalendarService:
                     rows = c.fetchall()
                     existing_status = 'pending'
                     
-                    # Ưu tiên giữ lại trạng thái 'notified' nếu đã từng bắn tin
-                    # Nếu có nhiều bản ghi (rác), chỉ cần 1 cái đã notified là đủ để chặn alert lại.
                     for r in rows:
                         s = r['status']
                         if s in ['pre_notified', 'post_notified']:
@@ -113,8 +111,6 @@ class EconomicCalendarService:
                             break 
                             
                     # Bước 2: Dọn dẹp bản ghi cũ (Duplicate Cleanup)
-                    # Xóa tất cả các bản ghi matching (bao gồm cả cái vừa tìm thấy status)
-                    # Để chuẩn bị insert cái mới chuẩn nhất.
                     c.execute('''
                         DELETE FROM economic_events 
                         WHERE title = ? 
@@ -149,7 +145,7 @@ class EconomicCalendarService:
     def fetch_realtime_results_html(self):
         """
         Quét HTML để lấy kết quả Actual Real-time.
-        Chỉ quét tin hôm nay.
+        Logic update thông minh: Match theo Title + Currency + Date (bỏ qua Time ID).
         """
         url = f"{self.base_url}?day=today"
         logger.info(f"⚡ scanning Real-time HTML: {url}")
@@ -165,40 +161,43 @@ class EconomicCalendarService:
             rows = table.find_all("tr", class_="calendar__row")
             current_date_str = ""
             
-            for row in rows:
-                if "calendar__row--new-day" in row.get("class", []):
-                    d = row.find("span", class_="date")
-                    if d: current_date_str = d.text.strip()
+            # Mở DB connection
+            with database.get_db_connection() as conn:
+                c = conn.cursor()
                 
-                title = row.find("span", class_="calendar__event-title").text.strip()
-                currency = row.find("td", class_="calendar__currency").text.strip()
-                actual = row.find("td", class_="calendar__actual").text.strip()
-                result_time = row.find("td", class_="calendar__time").text.strip()
+                for row in rows:
+                    if "calendar__row--new-day" in row.get("class", []):
+                        d = row.find("span", class_="date")
+                        if d: current_date_str = d.text.strip() # "Thu Jan 25"
+                    
+                    title = row.find("span", class_="calendar__event-title").text.strip()
+                    currency = row.find("td", class_="calendar__currency").text.strip()
+                    actual = row.find("td", class_="calendar__actual").text.strip()
+                    result_time = row.find("td", class_="calendar__time").text.strip()
+                    
+                    if not actual: continue
+                    
+                    # Cần parse để lấy ngày chuẩn YYYY-MM-DD
+                    dt_utc = self.parse_datetime_html(current_date_str, result_time)
+                    if not dt_utc: continue
+                    
+                    date_only = dt_utc.strftime('%Y-%m-%d')
+                    
+                    # --- LOGIC UPDATE ACTUAL ---
+                    # Không dùng ID, dùng Title + Currency + Timestamp(Date)
+                    c.execute('''
+                        UPDATE economic_events 
+                        SET actual = ? 
+                        WHERE title = ? 
+                        AND currency = ? 
+                        AND date(timestamp) = ?
+                        AND (actual IS NULL OR actual = '')
+                    ''', (actual, title, currency, date_only))
+                    
+                    if c.rowcount > 0:
+                        logger.info(f"✅ Updated Actual for {title}: {actual}")
                 
-                if not actual: continue
-                
-                # Parse Time to UTC
-                dt_utc = self.parse_datetime_html(current_date_str, result_time)
-                if not dt_utc: continue
-                
-                timestamp_iso = dt_utc.strftime('%Y-%m-%d %H:%M:%S')
-                
-                # Reconstruct ID
-                id_str = f"{timestamp_iso}_{currency}_{title}".replace(" ", "_").replace("/", "").replace(":", "")
-                
-                event_dict = {
-                    "id": id_str,
-                    "title": title,
-                    "currency": currency,
-                    "impact": "High", 
-                    "timestamp": timestamp_iso,
-                    "forecast": row.find("td", class_="calendar__forecast").text.strip(),
-                    "previous": row.find("td", class_="calendar__previous").text.strip(),
-                    "actual": actual,
-                    "event": title
-                }
-                
-                database.upsert_economic_event(event_dict)
+                conn.commit()
                 
         except Exception as e:
             logger.error(f"❌ Error scanning HTML: {e}")
