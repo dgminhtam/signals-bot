@@ -63,8 +63,10 @@ class EconomicCalendarService:
     def sync_schedule_to_db(self):
         """
         Đồng bộ lịch từ JSON vào DB.
-        Cơ chế Anti-Duplicate: Xóa các tin pending cũ nếu trùng Title, Currency, Date 
-        nhưng khác ID (tránh lặp tin do thay đổi giờ phút nhỏ).
+        Cơ chế: MERGE & PRESERVE STATUS
+        1. Tìm bản ghi cũ (dựa trên Title + Currency + Date) để lấy Status cũ (tránh bắn lại Alert).
+        2. Xóa tất cả phiên bản cũ của sự kiện này.
+        3. Insert sự kiện mới (với ID mới theo giờ mới) nhưng giữ nguyên Status cũ.
         """
         events = self.fetch_schedule_json()
         count = 0
@@ -89,34 +91,50 @@ class EconomicCalendarService:
                     # 2. Generate Deterministic ID
                     id_str = f"{timestamp_iso}_{currency}_{title}".replace(" ", "_").replace("/", "").replace(":", "")
                     
-                    # 3. ANTI-DUPLICATE CLEANUP
-                    # Chiến lược: Xóa tin cũ (status=pending) nếu trùng Title + Currency + Date nhưng ID thay đổi
+                    # --- BẮT ĐẦU LOGIC MERGE ---
+                    
+                    # Bước 1: Tìm Status cũ
+                    c.execute('''
+                        SELECT status FROM economic_events
+                        WHERE title = ? 
+                        AND currency = ? 
+                        AND date(timestamp) = ?
+                    ''', (title, currency, date_only))
+                    
+                    rows = c.fetchall()
+                    existing_status = 'pending'
+                    
+                    # Ưu tiên giữ lại trạng thái 'notified' nếu đã từng bắn tin
+                    # Nếu có nhiều bản ghi (rác), chỉ cần 1 cái đã notified là đủ để chặn alert lại.
+                    for r in rows:
+                        s = r['status']
+                        if s in ['pre_notified', 'post_notified']:
+                            existing_status = s
+                            break 
+                            
+                    # Bước 2: Dọn dẹp bản ghi cũ (Duplicate Cleanup)
+                    # Xóa tất cả các bản ghi matching (bao gồm cả cái vừa tìm thấy status)
+                    # Để chuẩn bị insert cái mới chuẩn nhất.
                     c.execute('''
                         DELETE FROM economic_events 
                         WHERE title = ? 
                         AND currency = ? 
-                        AND date(timestamp) = ? 
-                        AND status = 'pending'
-                        AND id != ?
-                    ''', (title, currency, date_only, id_str))
+                        AND date(timestamp) = ?
+                    ''', (title, currency, date_only))
                     
-                    if c.rowcount > 0:
-                        logger.info(f"🧹 Cleaned up {c.rowcount} duplicate pending events for '{title}' (Date: {date_only})")
+                    if c.rowcount > 0 and existing_status != 'pending':
+                         logger.info(f"♻️ Merged event '{title}' (Preserved status: {existing_status})")
 
-                    # 4. Upsert Event
-                    # Gọi trực tiếp SQL thay vì qua database.upsert_economic_event để dùng chung kết nối
+                    # Bước 3: Insert bản ghi mới với Status bảo toàn
                     c.execute('''
-                        INSERT INTO economic_events (id, title, currency, impact, timestamp, forecast, previous, actual)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        ON CONFLICT(id) DO UPDATE SET
-                            forecast = excluded.forecast,
-                            previous = excluded.previous,
-                            timestamp = excluded.timestamp
+                        INSERT INTO economic_events (id, title, currency, impact, timestamp, forecast, previous, actual, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''', (
                         id_str, title, currency, impact, timestamp_iso, 
                         item.get('forecast', ''), 
                         item.get('previous', ''), 
-                        ""
+                        "", # Actual is empty in schedule
+                        existing_status
                     ))
                     count += 1
                     
@@ -126,7 +144,7 @@ class EconomicCalendarService:
             
             conn.commit()
                 
-        logger.info(f"✅ Synced {count} events from JSON Schedule.")
+        logger.info(f"✅ Synced {count} events from JSON Schedule (Merge & Preserve Status).")
 
     def fetch_realtime_results_html(self):
         """
