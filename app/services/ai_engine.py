@@ -119,7 +119,9 @@ def analyze_market(
         - Thời gian report trước: {last_report.get('created_at', 'N/A')}
         - Xu hướng (Trend): {last_report.get('trend', 'N/A')}
         - Điểm Sentiment: {last_report.get('sentiment_score', 0)}
-        - Tóm tắt nội dung cũ: {last_report.get('report_content', '')[:300]}...
+        - Các ý chính (Bullet Points) đã báo cáo:
+        {json.dumps(last_report.get('bullet_points', []), ensure_ascii=False, indent=2)}
+        - Tóm tắt nội dung cũ: {last_report.get('report_content', '')[:1500]}...
         """
     else:
         prev_context_str = "Chưa có dữ liệu phiên trước (Đây là phiên chạy đầu tiên)."

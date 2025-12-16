@@ -18,12 +18,18 @@ Hệ thống ghi nhận trạng thái từ phiên trước:
 === DỮ LIỆU TIN TỨC ĐẦU VÀO ===
 {news_text}
 
+=== QUY TẮC LỌC TIN (DEDUPLICATION RULES) - QUAN TRỌNG ===
+1. So sánh kỹ DỮ LIỆU TIN TỨC ĐẦU VÀO với BỐI CẢNH QUÁ KHỨ.
+2. Nếu một sự kiện (ví dụ: Fed Rate Cut, War Escalation) ĐÃ ĐƯỢC NHẮC ĐẾN trong BỐI CẢNH QUÁ KHỨ, hãy BỎ QUA nó, TRỪ KHI có diễn biến mới (New Update/Reaction/Details).
+3. Tập trung tìm kiếm các tin tức MỚI NHẤT xảy ra trong khoảng thời gian giữa 2 báo cáo.
+4. Nếu không có tin mới quan trọng (No Breaking News), hãy tập trung phân tích biến động giá (Price Action) và Kỹ thuật hiện tại thay vì lặp lại tin cũ.
+
 === NHIỆM VỤ ===
 
-1. Đánh giá "Market Sentiment": Tin tức ủng hộ phe Mua (Hawk/War/Inflation) hay Bán?
-2. Đối chiếu Kỹ thuật: Tin tức có ủng hộ xu hướng kỹ thuật hiện tại không? (Ví dụ: Tin tốt + Giá chạm hỗ trợ = Buy mạnh).
-3. Kết luận hành động.
-4. Phân tích tổng hợp các nguồn tin trên và kết hợp dữ liệu kỹ thuật (nếu có) để đưa ra chiến lược.
+1. Sàng lọc thông tin: Loại bỏ tin cũ đã báo cáo (trừ khi có update).
+2. Đánh giá "Market Sentiment": Tin tức MỚI ủng hộ phe Mua hay Bán?
+3. Đối chiếu Kỹ thuật: Tin tức có ủng hộ xu hướng kỹ thuật hiện tại không?
+4. Kết luận hành động.
 
 === HƯỚNG DẪN CHẤM ĐIỂM (SENTIMENT SCORING) ===
 - Tin Dovish (Hại USD) / Chiến tranh / Lạm phát cao = Tích cực cho Vàng (Điểm > 0).
@@ -39,23 +45,24 @@ Ví dụ tham khảo (Few-shot prompting):
 - Score -8 đến -10: Fed tăng lãi suất bất ngờ / Kinh tế Mỹ 'quá nóng' (NFP tăng vọt, Thất nghiệp giảm sâu).
 
 === QUY TRÌNH TƯ DUY (CHAIN OF THOUGHT) ===
-Bước 1: Đọc và Trích xuất. Tìm các từ khóa quan trọng: CPI, Fed, Rate Cut, War, Yields.
-Bước 2: Phân tích Tác động. 
+Bước 1: CHECK TRÙNG LẶP. Đọc Context cũ. Có tin nào trong Input trùng với Context không? Nếu có -> Bỏ qua.
+Bước 2: Phân tích Tác động của tin MỚI.
 - Tin này làm USD tăng hay giảm? -> Suy ra Vàng giảm hay tăng?
 - Đối chiếu với Dữ liệu Kỹ thuật: Tin tức có ủng hộ xu hướng trên biểu đồ không?
 
 Bước 3: TỰ KIỂM TRA (SELF-CORRECTION) - QUAN TRỌNG NHẤT:
 - Rà soát lại bản thảo.
+- Có lặp lại tin cũ của phiên trước không? Nếu có, xóa ngay.
 - Kiểm tra từng con số (Ví dụ: "CPI tăng 0.3%"). Số liệu này có BẮT BUỘC nằm trong phần "Tin tức" bên trên không?
 - Nếu số liệu không có trong input, HÃY XÓA NÓ ĐI. Không được tự bịa ra (No Hallucination).
 - Đảm bảo mức giá trong phần "Conclusion" khớp với "Dữ liệu Kỹ thuật".
 
 === YÊU CẦU OUTPUT (JSON Strictly) ===
 Trả về JSON theo schema đã định nghĩa với các lưu ý sau:
-- reasoning: Viết RA quy trình tư duy từng bước (Bước 1, 2, 3 bên trên). Đây là "không gian suy nghĩ" của bạn trước khi đưa ra kết luận. Quan trọng: Phải kiểm tra hallucination trong bước này.
+- reasoning: Viết RA quy trình tư duy từng bước (Bước 1, 2, 3 bên trên). Đặc biệt ghi chú về việc đã lọc tin cũ chưa.
 - headline: < 15 từ, bắt đầu bằng icon (🔥, 🚨, 📉, 📈), tóm tắt tác động mạnh nhất, xưng hô lịch sự, chuyên nghiệp.
 - trend: Chính xác là "BULLISH 🟢", "BEARISH 🔴", hoặc "SIDEWAY 🟡".
-- bullet_points: 3 gạch đầu dòng quan trọng nhất (Nguyên nhân -> Kết quả). Dùng động từ mạnh.
+- bullet_points: 3 gạch đầu dòng quan trọng nhất (Nguyên nhân -> Kết quả). Dùng động từ mạnh. CHỈ ĐƯA TIN MỚI.
 - conclusion: Chiến lược giao dịch cụ thể (Signal). BẮT BUỘC tham chiếu mức giá trong "Dữ liệu Kỹ thuật".
   Định dạng bắt buộc (dùng ký tự \\n để xuống dòng):
   "[BUY/SELL] XAUUSD [NOW/LIMIT] [Entry Price]\\n❌SL: [SL]\\n✅TP1: [TP1]\\n✅TP2: [TP2]"

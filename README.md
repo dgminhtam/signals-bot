@@ -139,6 +139,24 @@ WORDPRESS_APP_PASSWORD=xxxx xxxx xxxx xxxx
 WORDPRESS_LIVEBLOG_ID=13092
 ```
 
+
+#### 💡 Cách lấy `TELEGRAM_CHAT_ID`:
+1. Mở Telegram và tìm bot **@userinfobot** (hoặc **@RawDataBot**).
+2. Nhấn **Start** hoặc gửi tin nhắn bất kỳ.
+3. Copy dòng `Id` trả về:
+   - **Cá nhân**: Ví dụ `123456789`.
+   - **Cá nhân**: Ví dụ `123456789`.
+   - **Group/Channel**: Thêm bot vào nhóm, reload lệnh, lấy ID (thường bắt đầu bằng `-100...`).
+
+#### 🌐 Cách 2: Lấy qua trình duyệt (Browser)
+1. Chat với bot của bạn trên Telegram (gửi vài tin nhắn bất kỳ).
+2. Truy cập đường dẫn sau trên trình duyệt:
+   ```
+   https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates
+   ```
+   *(Thay `<YOUR_TOKEN>` bằng Token bot bạn vừa tạo)*
+3. Tìm đoạn `"chat":{"id":...}`. Dãy số đó chính là `TELEGRAM_CHAT_ID`.
+
 ### 5. Kiểm Tra Kết Nối AI
 ```bash
 python scripts/check_models.py
