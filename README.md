@@ -290,7 +290,7 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## 📧 Liên Hệ
 
-Project Link: [https://github.com/yourusername/signals-bot](https://github.com/yourusername/signals-bot)
+Project Link: [https://github.com/dgminhtam/signals-bot](https://github.com/dgminhtam/signals-bot)
 
 ---
 

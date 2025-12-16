@@ -51,10 +51,13 @@ class AutoTrader:
         signal = "WAIT"
         
         # Logic: AI Trend + Score phải CÙNG CHIỀU
-        if ai_trend == "BULLISH" and ai_score > 0:
+        # Fix: So sánh chuỗi linh hoạt hơn (dùng in upper)
+        trend_upper = ai_trend.upper()
+        
+        if ("BULLISH" in trend_upper) and (ai_score > 0):
             signal = "BUY"
             logger.info("✅ AI Signal: BULLISH + Positive Score → BUY")
-        elif ai_trend == "BEARISH" and ai_score < 0:
+        elif ("BEARISH" in trend_upper) and (ai_score < 0):
             signal = "SELL"
             logger.info("✅ AI Signal: BEARISH + Negative Score → SELL")
         else:
@@ -83,36 +86,63 @@ class AutoTrader:
         except Exception as e:
             logger.error(f"❌ Lỗi tính Volume: {e}. Bỏ qua điều kiện Volume.")
         
-        # ===== STEP 5: FIBONACCI SL/TP =====
+        # ===== STEP 5: FIBONACCI SL/TP & RISK MANAGEMENT =====
         fibo = calculate_fibonacci_levels(df)
         
-        # Find nearest Support/Resistance
+        # Find nearest Support/Resistance from Fibonacci
         support = 0.0
         resistance = float('inf')
         
-        for price in fibo.values():
-            if price < current_price and price > support:
-                support = price
-            if price > current_price and price < resistance:
-                resistance = price
+        if fibo:
+            for price in fibo.values():
+                if price < current_price and price > support:
+                    support = price
+                if price > current_price and price < resistance:
+                    resistance = price
         
         # Set SL/TP dựa trên Signal
         sl = 0.0
         tp = 0.0
         
-        if signal == "BUY":
-            sl = support if support > 0 else current_price - 10.0  # Fallback
-            tp = resistance if resistance != float('inf') else current_price + 10.0
-        elif signal == "SELL":
-            sl = resistance if resistance != float('inf') else current_price + 10.0
-            tp = support if support > 0 else current_price - 10.0
+        # Fallback Risk Management (Nếu không tìm được Fibo)
+        FALLBACK_SL_PIPS = 5.0   # 5 giá
+        FALLBACK_TP_PIPS = 10.0  # 10 giá
         
-        logger.info(f"🎯 Fibonacci Levels: Support={support:.2f}, Resistance={resistance:.2f}")
-        logger.info(f"🎯 Order Parameters: Signal={signal}, SL={sl:.2f}, TP={tp:.2f}")
+        if signal == "BUY":
+            # SL tại Support gần nhất hoặc Price - 5 giá
+            if support > 0:
+                sl = support
+            else:
+                sl = current_price - FALLBACK_SL_PIPS
+                logger.warning(f"⚠️ No Fibo Support found. Using Fallback SL: {sl}")
+                
+            # TP tại Resistance gần nhất hoặc Price + 10 giá
+            if resistance != float('inf'):
+                tp = resistance
+            else:
+                tp = current_price + FALLBACK_TP_PIPS
+                logger.warning(f"⚠️ No Fibo Resistance found. Using Fallback TP: {tp}")
+                
+        elif signal == "SELL":
+            # SL tại Resistance gần nhất hoặc Price + 5 giá
+            if resistance != float('inf'):
+                sl = resistance
+            else:
+                sl = current_price + FALLBACK_SL_PIPS
+                logger.warning(f"⚠️ No Fibo Resistance found. Using Fallback SL: {sl}")
+                
+            # TP tại Support gần nhất hoặc Price - 10 giá
+            if support > 0:
+                tp = support
+            else:
+                tp = current_price - FALLBACK_TP_PIPS
+                logger.warning(f"⚠️ No Fibo Support found. Using Fallback TP: {tp}")
+        
+        logger.info(f"🎯 Order Parameters: Signal={signal}, SL={sl:.2f}, TP={tp:.2f} (Current: {current_price:.2f})")
         
         # ===== STEP 6: EXECUTE ORDER =====
         if signal in ["BUY", "SELL"]:
-            logger.info(f"🚀 AI Signal: {ai_trend} (Score: {ai_score}) | Volume: Confirmed | Decision: {signal}")
+            logger.info(f"🚀 AI Signal: {trend_upper} (Score: {ai_score}) | Decision: {signal}")
             logger.info(f"🚀 Executing {signal} order...")
             
             response = self.client.execute_order(self.symbol, signal, self.volume, sl, tp)
