@@ -347,3 +347,26 @@ def check_upcoming_high_impact_news(minutes: int = 30) -> Optional[str]:
     except Exception as e:
         logger.error(f"Lỗi check upcoming news: {e}")
         return None
+
+def check_recent_high_impact_news(minutes: int = 15) -> Optional[str]:
+    """
+    Kiểm tra xem có tin tức High Impact VỪA diễn ra không.
+    Trả về Title của sự kiện nếu có, ngược lại trả về None.
+    """
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Lấy sự kiện High Impact đã xảy ra trong khoảng (now - minutes, now)
+            c.execute('''
+                SELECT title FROM economic_events
+                WHERE impact = 'High'
+                AND timestamp <= datetime('now')
+                AND timestamp >= datetime('now', ?)
+            ''', (f'-{minutes} minutes',))
+            
+            row = c.fetchone()
+            return row['title'] if row else None
+            
+    except Exception as e:
+        logger.error(f"Lỗi check recent news: {e}")
+        return None
