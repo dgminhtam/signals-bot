@@ -146,6 +146,7 @@ class EconomicCalendarService:
         """
         Quét HTML để lấy kết quả Actual Real-time.
         Logic update thông minh: Match theo Title + Currency + Date (bỏ qua Time ID).
+        Safe Extraction: Kiểm tra thẻ tồn tại để tránh crash.
         """
         url = f"{self.base_url}?day=today"
         logger.info(f"⚡ scanning Real-time HTML: {url}")
@@ -166,36 +167,54 @@ class EconomicCalendarService:
                 c = conn.cursor()
                 
                 for row in rows:
-                    if "calendar__row--new-day" in row.get("class", []):
-                        d = row.find("span", class_="date")
-                        if d: current_date_str = d.text.strip() # "Thu Jan 25"
-                    
-                    title = row.find("span", class_="calendar__event-title").text.strip()
-                    currency = row.find("td", class_="calendar__currency").text.strip()
-                    actual = row.find("td", class_="calendar__actual").text.strip()
-                    result_time = row.find("td", class_="calendar__time").text.strip()
-                    
-                    if not actual: continue
-                    
-                    # Cần parse để lấy ngày chuẩn YYYY-MM-DD
-                    dt_utc = self.parse_datetime_html(current_date_str, result_time)
-                    if not dt_utc: continue
-                    
-                    date_only = dt_utc.strftime('%Y-%m-%d')
-                    
-                    # --- LOGIC UPDATE ACTUAL ---
-                    # Không dùng ID, dùng Title + Currency + Timestamp(Date)
-                    c.execute('''
-                        UPDATE economic_events 
-                        SET actual = ? 
-                        WHERE title = ? 
-                        AND currency = ? 
-                        AND date(timestamp) = ?
-                        AND (actual IS NULL OR actual = '')
-                    ''', (actual, title, currency, date_only))
-                    
-                    if c.rowcount > 0:
-                        logger.info(f"✅ Updated Actual for {title}: {actual}")
+                    try:
+                        # 1. Safe Date Extraction
+                        if "calendar__row--new-day" in row.get("class", []):
+                            d_tag = row.find("span", class_="date")
+                            if d_tag: 
+                                current_date_str = d_tag.text.strip()
+                        
+                        # 2. Safe Field Extraction
+                        title_tag = row.find("span", class_="calendar__event-title")
+                        currency_tag = row.find("td", class_="calendar__currency")
+                        actual_tag = row.find("td", class_="calendar__actual")
+                        time_tag = row.find("td", class_="calendar__time")
+                        
+                        # Skip if critical info missing
+                        if not title_tag or not currency_tag or not actual_tag:
+                            continue
+
+                        title = title_tag.text.strip()
+                        currency = currency_tag.text.strip()
+                        actual = actual_tag.text.strip()
+                        
+                        # Only process if Actual value exists
+                        if not actual: continue
+
+                        # Parse Date
+                        result_time = time_tag.text.strip() if time_tag else ""
+                        dt_utc = self.parse_datetime_html(current_date_str, result_time)
+                        
+                        if not dt_utc: continue
+                        
+                        date_only = dt_utc.strftime('%Y-%m-%d')
+                        
+                        # --- LOGIC UPDATE ACTUAL ---
+                        c.execute('''
+                            UPDATE economic_events 
+                            SET actual = ? 
+                            WHERE title = ? 
+                            AND currency = ? 
+                            AND date(timestamp) = ?
+                            AND (actual IS NULL OR actual = '')
+                        ''', (actual, title, currency, date_only))
+                        
+                        if c.rowcount > 0:
+                            logger.info(f"✅ Updated Actual for {title}: {actual}")
+                            
+                    except Exception as row_error:
+                        logger.warning(f"⚠️ Error parsing row: {row_error}")
+                        continue
                 
                 conn.commit()
                 
