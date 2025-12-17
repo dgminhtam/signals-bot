@@ -94,16 +94,36 @@ class AutoTrader:
         # ===== STEP 4: VOLUME CONFIRMATION =====
         try:
             if len(df) >= 20:
+                # 4.1 Volume Analysis
                 vol_sma20 = df['Volume'].tail(20).mean()
                 current_vol = df['Volume'].iloc[-1]
                 prev_vol = df['Volume'].iloc[-2]
+                
+                # 4.2 Price Analysis (SMA20)
+                price_sma20 = df['Close'].tail(20).mean()
+                
+                # 4.3 Fibo Levels
+                fibo = calculate_fibonacci_levels(df, window=120)
+                sup = fibo.get('0.0', 0) # Support (min) ?? No, 1.0 is Low usually in that dict logic
+                # Actually calculate_fibonacci_levels returns dict mapping '0.0' to High, '1.0' to Low usually or vice versa depending on logic.
+                # In charter.py: '0.0': price_high, '1.0': price_low.
+                # Let's just log the full important levels.
+                
+                logger.info(f"💾 MARKET INDICATORS:")
+                logger.info(f"   • Price: {current_price:.2f} (SMA20: {price_sma20:.2f})")
+                logger.info(f"   • Volume: {current_vol} (Prev: {prev_vol}, SMA20: {vol_sma20:.0f})")
+                if fibo:
+                    logger.info(f"   • Fibo Support (100%): {fibo.get('1.0', 0):.2f}")
+                    logger.info(f"   • Fibo Res (0%): {fibo.get('0.0', 0):.2f}")
+                    logger.info(f"   • Fibo Golden (61.8%): {fibo.get('0.618', 0):.2f}")
                 
                 if (current_vol <= vol_sma20) and (prev_vol <= vol_sma20):
                     logger.warning("⚠️ Volume Low (< SMA20). Signal Weak.")
                     return "WAIT_LOW_VOLUME"
                 else:
-                    logger.info("✅ Volume Confirmed.")
-        except: pass
+                    logger.info("✅ Volume Confirmed (> SMA20).")
+        except Exception as e:
+            logger.error(f"⚠️ Indicator Check Error: {e}")
         
         # ===== STEP 5: DETERMINE SL/TP =====
         ai_sl = latest_report.get('stop_loss', 0.0)
