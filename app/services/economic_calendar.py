@@ -313,7 +313,7 @@ class EconomicCalendarService:
             f"📊 <b>Dữ liệu:</b>\n"
             f"   • Dự báo: {forecast}\n"
             f"   • Kỳ trước: {previous}\n\n"
-            f"💡 <b>Góc nhìn AI:</b> {exp}\n"
+            f"💡 <b>Phân tích:</b> {exp}\n"
             f"📈 <b>Kịch bản Tăng:</b> {high}\n"
             f"📉 <b>Kịch bản Giảm:</b> {low}\n\n"
             f"#PreNews #{event['currency']}"
