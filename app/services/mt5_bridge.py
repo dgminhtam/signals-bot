@@ -2,6 +2,7 @@ import socket
 import pandas as pd
 import io
 import time
+from typing import List, Dict, Optional
 
 class MT5DataClient:
     def __init__(self, host='127.0.0.1', port=1122):
@@ -72,7 +73,7 @@ class MT5DataClient:
             if not response_str or response_str.startswith("ERROR"):
                 return None
 
-            # Parse CSV: Time,Open,High,Low,Close,Volume,EMA50,EMA200,Support,Resistance
+            # Parse CSV: Time,Open,High,Low,Close,Volume
             csv_str = response_str.replace(";", "\n")
             
             df = pd.read_csv(io.StringIO(csv_str), header=None, 
@@ -112,20 +113,60 @@ class MT5DataClient:
             print(f"❌ Lỗi gửi lệnh: {e}")
             return f"FAIL|EXCEPTION|{e}"
 
-    def check_positions(self, symbol: str = "ALL") -> str:
+    def get_open_positions(self, symbol: str = "ALL") -> List[Dict]:
         """
-        Kiểm tra lệnh đang mở: CHECK|SYMBOL
+        Lấy danh sách lệnh đang mở.
+        Trả về: List of Dictionaries [{'ticket': 123, 'type': 'BUY', 'volume': 0.1, 'profit': 10.5}]
         """
         if not self.sock:
             if not self.connect():
-                return "FAIL|NO_CONNECTION"
+                return []
             
         try:
             command = f"CHECK|{symbol}"
             self.sock.send(command.encode())
             
             response = self.sock.recv(4096).decode('utf-8').strip()
-            return response
+            
+            if response == "EMPTY" or response.startswith("FAIL") or response.startswith("ERROR"):
+                return []
+            
+            # Parse response: "123456,0,0.01,5.5;123457,1,0.02,-1.2;"
+            positions = []
+            items = response.split(";")
+            
+            for item in items:
+                if not item.strip(): continue
+                parts = item.split(",")
+                if len(parts) >= 4:
+                    pos = {
+                        "ticket": int(parts[0]),
+                        "type": "BUY" if int(parts[1]) == 0 else "SELL",
+                        "volume": float(parts[2]),
+                        "profit": float(parts[3])
+                    }
+                    positions.append(pos)
+            
+            return positions
+            
         except Exception as e:
             print(f"❌ Lỗi check lệnh: {e}")
+            return []
+
+    def close_order(self, ticket: int) -> str:
+        """
+        Đóng lệnh theo Ticket: CLOSE|TICKET
+        """
+        if not self.sock:
+            if not self.connect():
+                return "FAIL|NO_CONNECTION"
+        
+        try:
+            command = f"CLOSE|{ticket}"
+            self.sock.send(command.encode())
+            
+            response = self.sock.recv(4096).decode('utf-8').strip()
+            return response
+        except Exception as e:
+            print(f"❌ Lỗi đóng lệnh: {e}")
             return f"FAIL|EXCEPTION|{e}"

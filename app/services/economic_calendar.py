@@ -13,6 +13,8 @@ from app.core import config
 from app.core import database
 from app.services import telegram_bot
 from app.services import ai_engine
+# IMPORT AUTOTRADER
+from app.services.trader import AutoTrader
 
 logger = config.logger
 
@@ -313,7 +315,7 @@ class EconomicCalendarService:
             f"📊 <b>Dữ liệu:</b>\n"
             f"   • Dự báo: {forecast}\n"
             f"   • Kỳ trước: {previous}\n\n"
-            f"💡 <b>Phân tích:</b> {exp}\n"
+            f"💡 <b>Góc nhìn AI:</b> {exp}\n"
             f"📈 <b>Kịch bản Tăng:</b> {high}\n"
             f"📉 <b>Kịch bản Giảm:</b> {low}\n\n"
             f"#PreNews #{event['currency']}"
@@ -328,8 +330,8 @@ class EconomicCalendarService:
         previous = event.get('previous', 'N/A')
         
         if analysis:
-            score = analysis.get('sentiment_score', 0)
-            icon = "🟢" if score > 0 else "🔴" if score < 0 else "🟡"
+            sentiment_score = analysis.get('sentiment_score', 0) # -10 to 10
+            icon = "🟢" if sentiment_score > 0 else "🔴" if sentiment_score < 0 else "🟡"
             clean_analysis = html.escape(analysis.get('impact_analysis', ''))
             
             msg = (
@@ -340,10 +342,31 @@ class EconomicCalendarService:
                 f"🔹 Dự báo:   {forecast}\n"
                 f"🔹 Kỳ trước: {previous}\n"
                 f"--------------------\n"
-                f"👉 <b>Đánh giá:</b> {score}/10 ({analysis.get('conclusion', '')})\n"
+                f"👉 <b>Đánh giá:</b> {sentiment_score}/10 ({analysis.get('conclusion', '')})\n"
                 f"📝 <b>Phân tích:</b> {clean_analysis}\n\n"
                 f"#EconomicResult #{event['currency']}"
             )
+            
+            # --- TRIGGER AUTO TRADER ---
+            try:
+                # Chỉ trigger nếu score rõ ràng
+                if abs(sentiment_score) >= 5:
+                    logger.info(f"🤖 Activating AutoTrader on Economic Result (Score: {sentiment_score})...")
+                    trader = AutoTrader()
+                    
+                    # Norm Score 0-10 & Trend
+                    score_norm = abs(sentiment_score)
+                    trend = "BULLISH" if sentiment_score > 0 else "BEARISH"
+                    
+                    news_data = {
+                        'title': event.get('title', 'Economic Data'),
+                        'score': score_norm,
+                        'trend': trend
+                    }
+                    trader.process_news_signal(news_data)
+            except Exception as e:
+                logger.error(f"❌ Trader Trigger Error: {e}")
+                
         else:
             msg = (
                 f"📢 <b>BẢN TIN KẾT QUẢ ({time_str})</b>\n"

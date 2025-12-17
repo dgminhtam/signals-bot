@@ -6,13 +6,15 @@ from datetime import datetime, timedelta
 from app.services.charter import get_market_data, calculate_fibonacci_levels
 from app.services.mt5_bridge import MT5DataClient
 from app.core import database
+from app.core import config
 
-logger = logging.getLogger(__name__)
+logger = config.logger
 
 class AutoTrader:
-    def __init__(self, symbol="XAUUSD", volume=0.01):
+    def __init__(self, symbol="XAUUSD", volume=None):
         self.symbol = symbol
-        self.volume = volume
+        # Use Config Volume if not provided
+        self.volume = volume if volume else config.TRADE_VOLUME
         self.client = MT5DataClient()
         
     def analyze_and_trade(self):
@@ -25,17 +27,14 @@ class AutoTrader:
         5. Fibonacci SL/TP
         6. Execute
         """
-        logger.info(f"🤖 Starting AI-Sentiment Analysis for {self.symbol}...")
+        logger.info(f"🤖 Starting AI-Sentiment Analysis for {self.symbol} (Vol: {self.volume})...")
         
         # ===== STEP 0: CHECK NEWS FILTER (PRE & POST) =====
-        # 0.1 Upcoming News (30 mins)
         upcoming_news = database.check_upcoming_high_impact_news(minutes=30)
         if upcoming_news:
             logger.warning(f"⛔ DỪNG GIAO DỊCH: Sắp có tin mạnh \"{upcoming_news}\" trong 30 phút tới.")
             return "WAIT_NEWS_EVENT"
 
-        # 0.2 Post News (15 mins) - NEW
-        # Tránh market biến động mạnh ngay sau tin
         recent_news = database.check_recent_high_impact_news(minutes=15)
         if recent_news:
              logger.warning(f"⛔ DỪNG GIAO DỊCH: Vừa có tin mạnh \"{recent_news}\" trong 15 phút qua. Chờ thị trường ổn định.")
@@ -45,22 +44,18 @@ class AutoTrader:
         latest_report = database.get_latest_report()
         
         if not latest_report:
-            logger.warning("⚠️ No AI report found in database. Cannot trade without sentiment.")
+            logger.warning("⚠️ No AI report found. Cannot trade.")
             return "WAIT_NO_SENTIMENT"
             
-        # 1.1 Check Time-To-Live (TTL) - NEW
-        # Nếu report quá cũ (> 180 phút), không trade theo tin cũ
         try:
              created_at_str = latest_report.get('created_at')
              if created_at_str:
-                 # SQLite default CURRENT_TIMESTAMP is UTC 'YYYY-MM-DD HH:MM:SS'
                  report_time = datetime.strptime(created_at_str, '%Y-%m-%d %H:%M:%S')
-                 # Compare with UTC now
                  if datetime.utcnow() - report_time > timedelta(minutes=180):
-                     logger.warning(f"⏳ Signal Expired! Report time: {created_at_str} (UTC). Old > 180 mins. Skip.")
+                     logger.warning(f"⏳ Signal Expired! Report time: {created_at_str}. Old > 180 mins.")
                      return "WAIT_SIGNAL_EXPIRED"
         except Exception as e:
-            logger.error(f"⚠️ Error checking signal TTL: {e}. Proceeding with caution.")
+            logger.error(f"⚠️ Error checking signal TTL: {e}")
 
         ai_trend = latest_report.get('trend', 'NEUTRAL')
         ai_score = latest_report.get('sentiment_score', 0)
@@ -76,32 +71,25 @@ class AutoTrader:
         current_price = df['Close'].iloc[-1]
         logger.info(f"💰 Current Price: {current_price:.2f} (Source: {source})")
         
-        # ===== STEP 3: DETERMINE DIRECTION (AI-BASED) =====
+        # ===== STEP 3: DETERMINE DIRECTION =====
         signal = "WAIT"
-        
-        # Logic: AI Trend + Score phải CÙNG CHIỀU
         trend_upper = ai_trend.upper()
         
         if ("BULLISH" in trend_upper) and (ai_score > 0):
             signal = "BUY"
-            logger.info("✅ AI Signal: BULLISH + Positive Score → BUY")
         elif ("BEARISH" in trend_upper) and (ai_score < 0):
             signal = "SELL"
-            logger.info("✅ AI Signal: BEARISH + Negative Score → SELL")
         else:
-            logger.info(f"⏸️ AI Signal: {ai_trend} (Score: {ai_score}) → WAIT (Không rõ ràng)")
+            logger.info(f"⏸️ AI Signal Unclear: {ai_trend} (Score: {ai_score}) → WAIT")
             return "WAIT_WEAK_SIGNAL"
         
-        # ===== STEP 3.1: SMART ENTRY CHECK - NEW =====
-        # Nếu giá đã chạy quá xa điểm Entry của AI (> 3 giá) -> Bỏ qua
+        # ===== STEP 3.1: SMART ENTRY CHECK =====
         ai_entry = latest_report.get('entry_price', 0.0)
         if ai_entry and ai_entry > 0:
             diff = abs(current_price - ai_entry)
-            if diff > 3.0: # 30 pips USD
-                 logger.warning(f"⚠️ Price moved too far from AI Entry (Diff > 3). Current: {current_price:.2f}, AI: {ai_entry}. Skip.")
+            if diff > 3.0: 
+                 logger.warning(f"⚠️ Price too far from AI Entry (Diff > 3). Current: {current_price:.2f}, AI: {ai_entry}.")
                  return "WAIT_BAD_PRICE"
-            else:
-                 logger.info(f"✅ Price within valid range (Diff={diff:.2f} <= 3.0).")
         
         # ===== STEP 4: VOLUME CONFIRMATION =====
         try:
@@ -110,87 +98,109 @@ class AutoTrader:
                 current_vol = df['Volume'].iloc[-1]
                 prev_vol = df['Volume'].iloc[-2]
                 
-                # Confirmation: Volume hiện tại hoặc nến trước > TB20
-                volume_confirmed = (current_vol > vol_sma20) or (prev_vol > vol_sma20)
-                
-                logger.info(f"📊 Volume: Current={int(current_vol):,}, Prev={int(prev_vol):,}, SMA20={int(vol_sma20):,}")
-                
-                if not volume_confirmed:
-                    logger.warning("⚠️ Volume thấp hơn TB20 → Tín hiệu yếu, bỏ qua lệnh.")
+                if (current_vol <= vol_sma20) and (prev_vol <= vol_sma20):
+                    logger.warning("⚠️ Volume Low (< SMA20). Signal Weak.")
                     return "WAIT_LOW_VOLUME"
                 else:
-                    logger.info("✅ Volume Confirmed: Có dòng tiền vào")
-            else:
-                logger.warning("⚠️ Không đủ dữ liệu để tính Volume (< 20 nến). Bỏ qua điều kiện Volume.")
-        except Exception as e:
-            logger.error(f"❌ Lỗi tính Volume: {e}. Bỏ qua điều kiện Volume.")
+                    logger.info("✅ Volume Confirmed.")
+        except: pass
         
-        # ===== STEP 5: DETERMINE SL/TP (AI Priority -> Fibo Fallback) =====
-        
-        # 5.1 Check AI Signals
+        # ===== STEP 5: DETERMINE SL/TP =====
         ai_sl = latest_report.get('stop_loss', 0.0)
         ai_tp = latest_report.get('take_profit', 0.0)
         
-        # Log AI Signal details
-        if ai_sl > 0 and ai_tp > 0:
-            logger.info(f"🧠 AI Explicit Signal Found: Entry={ai_entry}, SL={ai_sl}, TP={ai_tp}")
-        
-        # 5.2 Calculate Fibonacci (Always calc for reference or fallback)
-        fibo = calculate_fibonacci_levels(df)
-        support = 0.0
-        resistance = float('inf')
-        
-        if fibo:
-            for price in fibo.values():
-                if price < current_price and price > support: support = price
-                if price > current_price and price < resistance: resistance = price
-        
-        # 5.3 Set SL/TP
         sl = 0.0
         tp = 0.0
         
-        # Logic: If AI SL/TP is valid -> Use AI. Else -> Use Fibo/Fallback.
         if (ai_sl > 0 and ai_tp > 0):
             sl = ai_sl
             tp = ai_tp
-            logger.info(f"✅ Using AI-Defined Levels: SL={sl}, TP={tp}")
+            logger.info(f"✅ Using AI Levels: SL={sl}, TP={tp}")
         else:
-            logger.info("ℹ️ AI did not provide explicit SL/TP. Using Fibonacci/Fallback.")
-            
-            # Fallback Risk Management
+            # Fallback
             FALLBACK_SL_PIPS = 5.0
             FALLBACK_TP_PIPS = 10.0
             
+            # Simple Fibo Support/Resist Check could go here
             if signal == "BUY":
-                if support > 0: sl = support
-                else: sl = current_price - FALLBACK_SL_PIPS
-                
-                if resistance != float('inf'): tp = resistance
-                else: tp = current_price + FALLBACK_TP_PIPS
-                    
+                sl = current_price - FALLBACK_SL_PIPS
+                tp = current_price + FALLBACK_TP_PIPS
             elif signal == "SELL":
-                if resistance != float('inf'): sl = resistance
-                else: sl = current_price + FALLBACK_SL_PIPS
-                
-                if support > 0: tp = support
-                else: tp = current_price - FALLBACK_TP_PIPS
+                sl = current_price + FALLBACK_SL_PIPS
+                tp = current_price - FALLBACK_TP_PIPS
         
-        logger.info(f"🎯 Final Order Params: Signal={signal}, SL={sl:.2f}, TP={tp:.2f} (Current: {current_price:.2f})")
-        
-        # ===== STEP 6: EXECUTE ORDER =====
+        # ===== STEP 6: EXECUTE =====
         if signal in ["BUY", "SELL"]:
-            logger.info(f"🚀 AI Signal: {trend_upper} (Score: {ai_score}) | Decision: {signal}")
-            logger.info(f"🚀 Executing {signal} order...")
-            
+            logger.info(f"🚀 Executing {signal} (Vol: {self.volume}) | SL: {sl:.2f} | TP: {tp:.2f}")
             response = self.client.execute_order(self.symbol, signal, self.volume, sl, tp)
-            logger.info(f"📝 MT5 Response: {response}")
             return response
-        else:
-            logger.info("⏸️ No valid signal (Conditions not met).")
-            return "WAIT"
+            
+        return "WAIT"
 
-if __name__ == "__main__":
-    # Test Run
-    logging.basicConfig(level=logging.INFO)
-    trader = AutoTrader("XAUUSD", 0.01)
-    trader.analyze_and_trade()
+    def process_news_signal(self, news_data: dict):
+        """
+        Xử lý phản ứng với tin tức (Breaking News / Calendar)
+        Input: {'score': 0-10, 'trend': 'BULLISH', ...}
+        """
+        score = news_data.get('score', 0)
+        trend = news_data.get('trend', 'NEUTRAL').upper()
+        title = news_data.get('title', 'News Event')
+        
+        logger.info(f"⚡ [NEWS REACTOR] Processing: '{title}' (Trend: {trend}, Score: {score}/10)")
+        
+        # 1. Determine Direction
+        signal_direction = "NONE"
+        if "BULLISH" in trend or "POSITIVE" in trend:
+            signal_direction = "BUY"
+        elif "BEARISH" in trend or "NEGATIVE" in trend:
+            signal_direction = "SELL"
+            
+        if signal_direction == "NONE":
+            logger.info("   -> News trend neutral/mixed. No action.")
+            return
+            
+        # 2. DEFENSIVE: Check Existing Positions
+        positions = self.client.get_open_positions(self.symbol)
+        for pos in positions:
+            pos_type = pos['type'] # "BUY" or "SELL"
+            ticket = pos['ticket']
+            
+            # Nếu lệnh ngược chiều tin (Tin BUY mà đang SELL)
+            if pos_type != signal_direction:
+                logger.warning(f"⚠️ [DANGER] Holding {pos_type} (#{ticket}) against NEWS DIRECTION ({signal_direction})!")
+                
+                # Tùy chọn: Auto Cut Loss nếu tin quá mạnh (>8)
+                if score >= 8:
+                    logger.warning(f"   -> EMERGENCY CLOSE (#{ticket}) due to High Impact News!")
+                    self.client.close_order(ticket)
+            else:
+                logger.info(f"   -> Position #{ticket} ({pos_type}) is SAFE (Matches News).")
+
+        # 3. OFFENSIVE: Sniper Entry if Score >= 8 (High Confidence)
+        if score >= 8:
+            logger.info(f"⚔️ [OFFENSIVE] High Impact News detected (Score {score}). Preparing Sniper Entry...")
+            
+            # Get Current Price
+            df, _ = get_market_data(self.symbol)
+            if df is None or df.empty:
+                logger.error("   -> Failed to get price for Sniper Entry.")
+                return
+
+            current_price = df['Close'].iloc[-1]
+            
+            # Sniper Params: SL 10, TP 20
+            sl = 0.0
+            tp = 0.0
+            if signal_direction == "BUY":
+                sl = current_price - 10.0
+                tp = current_price + 20.0
+            else:
+                sl = current_price + 10.0
+                tp = current_price - 20.0
+                
+            logger.info(f"🚀 SNIPER EXECUTION: {signal_direction} @ {current_price:.2f} (SL: {sl}, TP: {tp})")
+            response = self.client.execute_order(self.symbol, signal_direction, self.volume, sl, tp)
+            logger.info(f"   -> Sniper Result: {response}")
+            
+        else:
+            logger.info(f"   -> Score {score} < 8. No automated entry.")
