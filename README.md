@@ -190,6 +190,9 @@ python main.py --trade
 
 # Chỉ quét tin (không phân tích)
 python main.py --crawler
+
+# Update Lịch Kinh Tế (Manual Trigger)
+python main.py --calendar
 ```
 
 ---
@@ -246,6 +249,13 @@ Schedule (JSON) → Cache/DB (Pending)
        ↓
 Real-time Scanner (HTML/curl_cffi) → Update Actual → Alert System
 ```
+
+---
+
+### Debug Tools (Dành cho Dev)
+- **Check Crawler**: `python scripts/test_content_fetch.py`
+- **Debug Calendar Parsing**: `python scripts/debug_calendar.py`
+- **Crawl Actuals Only**: `python scripts/crawl_realtime_debug.py`
 
 ---
 

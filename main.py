@@ -167,6 +167,7 @@ def main():
     parser.add_argument("--alert", action="store_true", help="Chạy thủ công chỉ phần Alert")
     parser.add_argument("--crawler", action="store_true", help="Chạy thủ công chỉ phần News Crawler")
     parser.add_argument("--trade", action="store_true", help="Chạy thủ công Auto Trader")
+    parser.add_argument("--calendar", action="store_true", help="Chạy thủ công Economic Calendar")
     
     args = parser.parse_args()
 
@@ -185,6 +186,9 @@ def main():
     elif args.crawler:
         logger.info("📰 Running Manual Crawler...")
         job_scan_news(force=True)
+    elif args.calendar:
+        logger.info("📅 Running Manual Economic Calendar...")
+        economic_worker.main()
     else:
         # Mặc định chạy Scheduler
         run_schedule()

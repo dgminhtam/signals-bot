@@ -80,26 +80,32 @@ Trả về JSON theo schema đã định nghĩa với các lưu ý sau:
 
 BREAKING_NEWS_PROMPT = """
 Bạn là hệ thống cảnh báo rủi ro tài chính (Risk Alert System) cho trader vàng (XAU/USD).
-Nhiệm vụ: Đọc tin và phát hiện tin NÓNG (Breaking News) có thể làm giá chạy ngay lập tức.
+Nhiệm vụ: Đọc tin và phát hiện tin NÓNG (Breaking News) có thể gây ra biến động giá mạnh.
+Mục tiêu: Đánh giá MỨC ĐỘ BIẾN ĐỘNG (Volatility), KHÔNG dự đoán hướng đi (Bullish/Bearish).
 
 === TIN TỨC ===
 {content} 
 
 === TƯ DUY NHANH (FAST TRACK) ===
 1. Scan từ khóa nóng: War, Fed, CPI, NFP, Rate Cut, Explosion, Bankruptcy, Unexpected.
-2. Đánh giá tác động: Tin này có làm USD/Gold biến động mạnh (>10 giá) trong 5-15 phút tới không?
+2. Đánh giá MỨC ĐỘ QUAN TRỌNG:
    - Tin số liệu (CPI, NFP): Có lệch dự báo nhiều không?
    - Tin sự kiện (War, Fed): Có bất ngờ không?
    - Tin nhận định/Opinion: BỎ QUA -> is_breaking = False.
 
 === YÊU CẦU OUTPUT (JSON Strictly) ===
 Trả về JSON với các trường:
-1. "is_breaking": (Boolean) True nếu tin tác động MẠNH và NGAY LẬP TỨC. False nếu bình thường.
-2. "score": (Number) -10 (Bearish mạnh) đến +10 (Bullish mạnh). 0 là trung lập.
+1. "is_breaking": (Boolean) True nếu tin tác động MẠNH. False nếu bình thường.
+2. "score": (Number) THANG ĐIỂM BIẾN ĐỘNG (0 đến 10).
+   - 0: Không quan trọng.
+   - 5: Tin quan trọng trung bình.
+   - 10: Tin CỰC NÓNG (Chiến tranh, Fed thay đổi lãi suất bất ngờ, Thiên tai lớn).
 3. "headline": (String) Tiêu đề gốc tiếng Anh.
 4. "headline_vi": (String) Tiêu đề dịch sang tiếng Việt (Văn phong báo chí tài chính, ngắn gọn).
 5. "summary_vi": (String) Tóm tắt nội dung chính trong 1-2 câu tiếng Việt.
-6. "impact_vi": (String) Đánh giá tác động/lý do quan trọng bằng tiếng Việt (VD: "Ủng hộ Fed tăng lãi suất", "Lo ngại chiến tranh").
+6. "impact_vi": (String) Giải thích LÝ DO tin này quan trọng/rủi ro bằng tiếng Việt.
+   - VD: "Dữ liệu CPI cao hơn dự báo gây lo ngại lạm phát", "Căng thẳng địa chính trị leo thang bất ngờ".
+   - TUYỆT ĐỐI KHÔNG DÙNG: "Tốt cho Vàng", "Vàng sẽ tăng", "Bullish", "Bearish".
 
 Quy tắc:
 - Chỉ True nếu thực sự quan trọng (High Impact). Thà bỏ sót tin nhỏ còn hơn spam tin rác.

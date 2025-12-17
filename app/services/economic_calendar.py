@@ -145,8 +145,7 @@ class EconomicCalendarService:
     def fetch_realtime_results_html(self):
         """
         Quét HTML để lấy kết quả Actual Real-time.
-        Logic update thông minh: Match theo Title + Currency + Date (bỏ qua Time ID).
-        Safe Extraction: Kiểm tra thẻ tồn tại để tránh crash.
+        Logic Update: Exact UTC Match (Server VN -> UTC Conversion)
         """
         url = f"{self.base_url}?day=today"
         logger.info(f"⚡ scanning Real-time HTML: {url}")
@@ -161,6 +160,7 @@ class EconomicCalendarService:
             
             rows = table.find_all("tr", class_="calendar__row")
             current_date_str = ""
+            last_time_str = ""
             
             # Mở DB connection
             with database.get_db_connection() as conn:
@@ -168,11 +168,17 @@ class EconomicCalendarService:
                 
                 for row in rows:
                     try:
-                        # 1. Safe Date Extraction
+                        # 1. Safe Date Extraction & Cleaning
                         if "calendar__row--new-day" in row.get("class", []):
                             d_tag = row.find("span", class_="date")
                             if d_tag: 
-                                current_date_str = d_tag.text.strip()
+                                # Clean date string (e.g. "Tue Dec 16 Oct Data" -> "Tue Dec 16")
+                                parts = d_tag.text.strip().split()
+                                if len(parts) >= 3:
+                                    current_date_str = " ".join(parts[:3])
+                                else:
+                                    current_date_str = d_tag.text.strip()
+                                last_time_str = ""
                         
                         # 2. Safe Field Extraction
                         title_tag = row.find("span", class_="calendar__event-title")
@@ -191,15 +197,25 @@ class EconomicCalendarService:
                         # Only process if Actual value exists
                         if not actual: continue
 
-                        # Parse Date
+                        # 3. Handle Time (Contextual filling)
                         result_time = time_tag.text.strip() if time_tag else ""
+                        if result_time:
+                            last_time_str = result_time
+                        elif last_time_str:
+                            result_time = last_time_str # Inherit previous time
+
+                        # 4. Parse Date with Explicit Timezone Conversion
+                        # Server VN (GMT+7) -> UTC
                         dt_utc = self.parse_datetime_html(current_date_str, result_time)
                         
-                        if not dt_utc: continue
+                        if not dt_utc: 
+                            logger.warning(f"⚠️ Could not parse date: {current_date_str} {result_time}")
+                            continue
                         
                         date_only = dt_utc.strftime('%Y-%m-%d')
                         
                         # --- LOGIC UPDATE ACTUAL ---
+                        # Match chính xác theo ngày UTC đã quy đổi
                         c.execute('''
                             UPDATE economic_events 
                             SET actual = ? 
@@ -210,7 +226,7 @@ class EconomicCalendarService:
                         ''', (actual, title, currency, date_only))
                         
                         if c.rowcount > 0:
-                            logger.info(f"✅ Updated Actual for {title}: {actual}")
+                            logger.info(f"✅ Updated Actual for {title} ({currency}) [{date_only}]: {actual}")
                             
                     except Exception as row_error:
                         logger.warning(f"⚠️ Error parsing row: {row_error}")
@@ -222,17 +238,37 @@ class EconomicCalendarService:
             logger.error(f"❌ Error scanning HTML: {e}")
 
     def parse_datetime_html(self, date_str, time_str):
-        """Helper để parse time từ HTML ForexFactory (New York Time) về UTC"""
+        """
+        Helper để parse time từ HTML
+        Assumption: HTML hiển thị giờ theo múi giờ Server (VN - GMT+7)
+        Goal: Convert về UTC chính xác.
+        """
         try:
             if not date_str or not time_str: return None
-            # Fix date format variations if needed
-            clean_date = " ".join(date_str.split()[1:]) if len(date_str.split()) > 1 else date_str
+            
+            # Clean Date String (Remove DoW if present, keep Month Date)
+            # Input: "Tue Dec 16" -> "Dec 16"
+            parts = date_str.split()
+            if len(parts) > 1:
+                clean_date = " ".join(parts[1:])
+            else:
+                clean_date = date_str
+                
             full_str = f"{clean_date} {datetime.now().year} {time_str}"
+            
+            # 1. Parse naive datetime
             dt_naive = date_parser.parse(full_str)
-            ny_tz = tz.gettz('America/New_York')
-            dt_ny = dt_naive.replace(tzinfo=ny_tz)
-            return dt_ny.astimezone(tz.UTC)
-        except: return None
+            
+            # 2. Force Local Timezone (VN)
+            local_tz = tz.gettz('Asia/Ho_Chi_Minh')
+            dt_local = dt_naive.replace(tzinfo=local_tz)
+            
+            # 3. Convert to UTC
+            return dt_local.astimezone(tz.UTC)
+            
+        except Exception as e:
+            # logger.error(f"Date parsing error: {e}")
+            return None
 
     def process_calendar_alerts(self):
         try:

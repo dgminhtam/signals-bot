@@ -330,6 +330,14 @@ def get_gold_news(lookback_minutes: Optional[int] = None, fast_mode: bool = Fals
                 full_content = extract_res.get("content", "")
                 image_url = extract_res.get("image_url")
                 
+                # Kiểm tra nội dung hợp lệ
+                is_error_content = isinstance(full_content, str) and (full_content.strip().startswith("Lỗi") or full_content.strip().startswith("Error"))
+                is_too_short = len(full_content) < 200
+
+                if is_error_content or is_too_short:
+                    logger.warning(f"⚠️ Content invalid or too short. Skipping DB save. (Error: {is_error_content}, Short: {is_too_short})")
+                    continue
+
                 news_item = {
                     "id": link,
                     "source": source_name,

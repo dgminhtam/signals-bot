@@ -36,6 +36,12 @@ def main():
         logger.info(f"   -> Tìm thấy {len(recent_articles)} tin chưa Alert. Đang checking...")
 
         for article in recent_articles:
+            # 1. Defense Layer: Kiểm tra nội dung rác/lỗi trước khi gọi AI
+            content_sample = article.get('content', '')
+            if len(content_sample) < 200 or "Lỗi cào dữ liệu" in content_sample:
+                logger.warning(f"⚠️ Skip Invalid Content: {article['title']}")
+                continue
+
             # 2. Pre-filter: Chỉ check AI nếu tiêu đề chứa từ khóa mạnh (Tiết kiệm Token & Tăng tốc)
             title_lower = article['title'].lower()
             urgent_keywords = ["cpi", "fed", "rate", "hike", "cut", "war", "explosion", 
@@ -62,22 +68,29 @@ def main():
             urgent_keywords = ["fed rate", "war", "nuclear", "tăng lãi suất", "chiến tranh"]
             if any(k in article['title'].lower() for k in urgent_keywords):
                 is_breaking = True
-                if score == 0: score = -5 
+                if score < 5: score = 8 # Force High Score for obvious keywords 
 
             if is_breaking:
                 logger.info(f"   🔥 BREAKING NEWS: {headline_vi}")
                 
                 # 3. Gửi ngay Telegram
-                trend_icon = "🟢" if score > 0 else "🔴" if score < 0 else "🟡"
-                trend_text = "BULLISH" if score > 0 else "BEARISH" if score < 0 else "NEUTRAL"
+                # 3. Gửi ngay Telegram
+                # Logic hiển thị Cấp độ Tác động (Score 0-10)
+                score_val = abs(score) # Đảm bảo dương
+                if score_val >= 8:
+                    warn_text = "🔥 TÁC ĐỘNG: CỰC MẠNH (Lưu ý rủi ro)"
+                elif score_val >= 5:
+                    warn_text = "⚡ TÁC ĐỘNG: MẠNH"
+                else:
+                    warn_text = "⚠️ TÁC ĐỘNG: TRUNG BÌNH"
 
                 message = f"""
 🚨 <b>{headline_vi}</b>
 
 📝 {summary_vi}
 
-💥 <b>Tác động:</b> {impact_vi}
-{trend_icon} <b>Xu hướng:</b> {trend_text}
+💥 <b>Phân tích:</b> {impact_vi}
+{warn_text}
 #XAUUSD #Breaking
 """
                 # Check Image
@@ -97,11 +110,11 @@ def main():
                         # Tiêu đề entry
                         wp_title = f"🚨 {headline_vi}"
                         
-                        # Nội dung HTML (Construct manual HTML to be safe)
+                        # Nội dung HTML
                         wp_content = f"""
                         <p>📝 {summary_vi}</p>
-                        <p>💥 <strong>Tác động:</strong> {impact_vi}</p>
-                        <p>{trend_icon} <strong>Xu hướng:</strong> {trend_text}</p>
+                        <p>💥 <strong>Phân tích:</strong> {impact_vi}</p>
+                        <p><strong>{warn_text}</strong></p>
                         """
                         
                         wordpress_service.create_liveblog_entry(
