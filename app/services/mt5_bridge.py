@@ -98,43 +98,66 @@ class MT5DataClient:
             print(f"❌ Lỗi lấy data: {e}")
             return None
 
+    def _send_simple_command(self, command: str) -> str:
+        """
+        Gửi lệnh và nhận phản hồi ngắn (Single packet)
+        Có cơ chế Retry nếu mất kết nối (WinError 10053, etc.)
+        """
+        max_retries = 3
+        last_error = None
+        
+        for attempt in range(max_retries):
+            # Ensure connection
+            if not self.sock:
+                if not self.connect():
+                    # If connect fails, wait and retry
+                    time.sleep(1)
+                    continue
+            
+            try:
+                self.sock.send(command.encode())
+                
+                # Wait for response
+                chunk = self.sock.recv(4096)
+                if not chunk:
+                    # Connection closed by peer normally but unexpectedly for us
+                    raise ConnectionResetError("Empty response, connection closed by peer")
+                    
+                response = chunk.decode('utf-8').strip()
+                return response
+                
+            except (socket.error, OSError) as e:
+                last_error = e
+                print(f"⚠️ Socket error ({e}). Reconnecting ({attempt+1}/{max_retries})...")
+                self.disconnect() # Force reset socket
+                time.sleep(0.5)
+            except Exception as e:
+                print(f"❌ Unexpected error sending command: {e}")
+                self.disconnect()
+                return f"FAIL|EXCEPTION|{e}"
+                
+        return f"FAIL|CONNECTION_ERROR|{last_error}"
+
     def execute_order(self, symbol: str, order_type: str, volume: float, sl: float, tp: float) -> str:
         """
         Gửi lệnh giao dịch: ORDER|SYMBOL|TYPE|VOL|SL|TP
         """
-        if not self.sock:
-            if not self.connect():
-                return "FAIL|NO_CONNECTION"
-        
-        try:
-            # Format: ORDER|XAUUSD|BUY|0.01|2000.0|2050.0
-            command = f"ORDER|{symbol}|{order_type}|{volume}|{sl}|{tp}"
-            self.sock.send(command.encode())
-            
-            response = self.sock.recv(4096).decode('utf-8').strip()
-            return response
-        except Exception as e:
-            print(f"❌ Lỗi gửi lệnh: {e}")
-            return f"FAIL|EXCEPTION|{e}"
+        # Format: ORDER|XAUUSD|BUY|0.01|2000.0|2050.0
+        command = f"ORDER|{symbol}|{order_type}|{volume}|{sl}|{tp}"
+        return self._send_simple_command(command)
 
     def get_open_positions(self, symbol: str = "ALL") -> List[Dict]:
         """
         Lấy danh sách lệnh đang mở.
         Trả về: List of Dictionaries [{'ticket': 123, 'type': 'BUY', 'volume': 0.1, 'profit': 10.5}]
         """
-        if not self.sock:
-            if not self.connect():
-                return []
-            
+        command = f"CHECK|{symbol}"
+        response = self._send_simple_command(command)
+        
+        if not response or response == "EMPTY" or response.startswith("FAIL") or response.startswith("ERROR"):
+            return []
+        
         try:
-            command = f"CHECK|{symbol}"
-            self.sock.send(command.encode())
-            
-            response = self.sock.recv(4096).decode('utf-8').strip()
-            
-            if response == "EMPTY" or response.startswith("FAIL") or response.startswith("ERROR"):
-                return []
-            
             # Parse response: "123456,0,0.01,5.5;123457,1,0.02,-1.2;"
             positions = []
             items = response.split(";")
@@ -152,25 +175,13 @@ class MT5DataClient:
                     positions.append(pos)
             
             return positions
-            
         except Exception as e:
-            print(f"❌ Lỗi check lệnh: {e}")
+            print(f"❌ Lỗi parse positions: {e}")
             return []
 
     def close_order(self, ticket: int) -> str:
         """
         Đóng lệnh theo Ticket: CLOSE|TICKET
         """
-        if not self.sock:
-            if not self.connect():
-                return "FAIL|NO_CONNECTION"
-        
-        try:
-            command = f"CLOSE|{ticket}"
-            self.sock.send(command.encode())
-            
-            response = self.sock.recv(4096).decode('utf-8').strip()
-            return response
-        except Exception as e:
-            print(f"❌ Lỗi đóng lệnh: {e}")
-            return f"FAIL|EXCEPTION|{e}"
+        command = f"CLOSE|{ticket}"
+        return self._send_simple_command(command)
