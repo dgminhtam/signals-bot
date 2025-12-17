@@ -13,7 +13,6 @@ from app.core import config
 from app.core import database
 from app.services import telegram_bot
 from app.services import ai_engine
-# IMPORT AUTOTRADER
 from app.services.trader import AutoTrader
 
 logger = config.logger
@@ -33,6 +32,34 @@ class EconomicCalendarService:
         if not os.path.exists("data"):
             os.makedirs("data")
 
+    def _fetch_url(self, url: str):
+        """
+        Helper: Browser Rotation & Retry Mechanism
+        Mục tiêu: Fix lỗi 403 Forbidden do cloudflare/firewall chặn IP Datacenter.
+        """
+        browsers = ["chrome120", "safari15_5", "chrome110", "edge101", "safari_ios_16_5"]
+        
+        for browser in browsers:
+            try:
+                # logger.info(f"🌐 Fetching {url} with impersonate='{browser}'...") # Giảm log spam
+                response = requests.get(url, headers=self.headers, impersonate=browser, timeout=30)
+                
+                if response.status_code == 200:
+                    return response
+                elif response.status_code == 403:
+                    logger.warning(f"⚠️ Blocked 403 ({browser}). Retrying in 3s...")
+                    time.sleep(3)
+                else:
+                    logger.warning(f"⚠️ Failed {response.status_code} ({browser}). Retrying...")
+                    time.sleep(3)
+
+            except Exception as e:
+                logger.warning(f"❌ Connection Error ({browser}): {e}")
+                time.sleep(3)
+        
+        logger.error(f"❌ All browsers failed to fetch URL: {url}")
+        return None
+
     def fetch_schedule_json(self) -> List[Dict]:
         """
         Lấy lịch sự kiện từ JSON API. 
@@ -47,8 +74,10 @@ class EconomicCalendarService:
                         return json.load(f)
             
             logger.info(f"🌐 Fetching Schedule JSON: {SCHEDULE_JSON_URL}")
-            response = requests.get(SCHEDULE_JSON_URL, impersonate="chrome120", timeout=30)
-            if response.status_code == 200:
+            # USE ROTATION
+            response = self._fetch_url(SCHEDULE_JSON_URL)
+            
+            if response and response.status_code == 200:
                 data = response.json()
                 with open(CACHE_FILE, 'w') as f:
                     json.dump(data, f)
@@ -75,11 +104,10 @@ class EconomicCalendarService:
                     currency = item.get('country', 'USD')
                     impact = item.get('impact', 'Low')
                     
-                    # Filter Low impact to save DB space (optional, but good practice)
+                    # Filter Low impact
                     if impact not in ['High', 'Medium']: continue
 
-                    # JSON date is usually ISO with offset, e.g. "2024-01-24T08:15:00-05:00"
-                    # dateutil handles this correctly and we convert to UTC.
+                    # JSON date -> UTC
                     date_str = item.get('date')
                     dt = date_parser.parse(date_str)
                     dt_utc = dt.astimezone(tz.UTC)
@@ -92,7 +120,6 @@ class EconomicCalendarService:
                     
                     # 1. Preserve Status
                     existing_status = 'pending'
-                    # Check Fuzzy Range to find previous entry
                     c.execute('''
                         SELECT status FROM economic_events
                         WHERE title = ? 
@@ -122,7 +149,7 @@ class EconomicCalendarService:
                         id_str, title, currency, impact, timestamp_iso, 
                         item.get('forecast', ''), 
                         item.get('previous', ''), 
-                        "", # Actual empty initially
+                        "", # Actual empty
                         existing_status
                     ))
                     count += 1
@@ -142,8 +169,10 @@ class EconomicCalendarService:
         logger.info(f"⚡ Scanning Real-time HTML (Weekly View): {url}")
         
         try:
-            response = requests.get(url, headers=self.headers, impersonate="chrome120", timeout=30)
-            if response.status_code != 200: return
+            # USE ROTATION
+            response = self._fetch_url(url)
+            
+            if not response or response.status_code != 200: return
 
             soup = BeautifulSoup(response.content, "html.parser")
             table = soup.find("table", class_="calendar__table")
@@ -163,9 +192,8 @@ class EconomicCalendarService:
                             d_tag = row.find("span", class_="date")
                             if d_tag:
                                 raw_date = d_tag.text.strip()
-                                # Clean: "Tue Dec 16 Oct Data" -> "Tue Dec 16"
                                 current_date_str = " ".join(raw_date.split()[:3])
-                                last_time_str = "" # Reset time for new day
+                                last_time_str = ""
                         
                         if "data-event-id" not in row.attrs: continue
 
@@ -180,16 +208,16 @@ class EconomicCalendarService:
                         currency = currency_tag.text.strip()
                         actual = actual_tag.text.strip()
                         
-                        if not actual: continue # No data to update
+                        if not actual: continue 
 
-                        # 3. Handle Time (Grouped events handling)
+                        # 3. Handle Time
                         time_tag = row.find("td", class_="calendar__time")
                         result_time = time_tag.text.strip() if time_tag else ""
                         
                         if result_time:
                             last_time_str = result_time
                         elif last_time_str:
-                            result_time = last_time_str # Inherit
+                            result_time = last_time_str 
                         
                         # 4. CRITICAL: Parse & Convert Timezone (VN -> UTC)
                         dt_utc = self.parse_datetime_html(current_date_str, result_time)
@@ -219,10 +247,7 @@ class EconomicCalendarService:
     def parse_datetime_html(self, date_str, time_str):
         """
         Parse HTML Date/Time string.
-        Logic:
-        1. Parse Text -> Naive Datetime
-        2. Assign 'Asia/Ho_Chi_Minh' (Local IP Time)
-        3. Convert -> UTC
+        Logic: 1. Naive -> 2. Assign 'Asia/Ho_Chi_Minh' -> 3. UTC
         """
         try:
             if not date_str or not time_str: return None
@@ -234,9 +259,6 @@ class EconomicCalendarService:
             else:
                 clean_date = date_str
             
-            # Full string: "Dec 16 2024 9:45pm"
-            # Note: Need correct year. Simple assumption: Current year.
-            # Edge case: End of year transition could be tricky, but for now Current Year is standard.
             current_year = datetime.now().year
             full_str = f"{clean_date} {current_year} {time_str}"
             
@@ -254,7 +276,6 @@ class EconomicCalendarService:
             return None
 
     def _format_vn_time(self, utc_timestamp_str):
-        """Helper to display UTC timestamp as VN Time string"""
         try:
             ts = date_parser.parse(utc_timestamp_str)
             if ts.tzinfo is None: ts = ts.replace(tzinfo=tz.UTC)
@@ -279,7 +300,6 @@ class EconomicCalendarService:
                 if ts.tzinfo is None: ts = ts.replace(tzinfo=tz.UTC)
                 diff = (ts - now_utc).total_seconds() / 60
                 
-                # If parsed incorrectly/old, skip
                 if diff < -10:
                     database.update_event_status(event['id'], 'pre_notified')
                     continue
@@ -330,7 +350,7 @@ class EconomicCalendarService:
         previous = event.get('previous', 'N/A')
         
         if analysis:
-            sentiment_score = analysis.get('sentiment_score', 0) # -10 to 10
+            sentiment_score = analysis.get('sentiment_score', 0)
             icon = "🟢" if sentiment_score > 0 else "🔴" if sentiment_score < 0 else "🟡"
             clean_analysis = html.escape(analysis.get('impact_analysis', ''))
             
@@ -349,12 +369,10 @@ class EconomicCalendarService:
             
             # --- TRIGGER AUTO TRADER ---
             try:
-                # Chỉ trigger nếu score rõ ràng
                 if abs(sentiment_score) >= 5:
                     logger.info(f"🤖 Activating AutoTrader on Economic Result (Score: {sentiment_score})...")
                     trader = AutoTrader()
                     
-                    # Norm Score 0-10 & Trend
                     score_norm = abs(sentiment_score)
                     trend = "BULLISH" if sentiment_score > 0 else "BEARISH"
                     
