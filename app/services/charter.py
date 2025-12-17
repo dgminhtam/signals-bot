@@ -8,6 +8,13 @@ import numpy as np
 import yfinance as yf
 from typing import Tuple, Dict, Optional
 import os
+import sys
+
+# Add project root to path to allow direct execution
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(os.path.dirname(current_dir))
+if project_root not in sys.path:
+    sys.path.append(project_root)
 
 from app.services.mt5_bridge import MT5DataClient
 from app.core import config
