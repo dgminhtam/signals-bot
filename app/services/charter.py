@@ -252,6 +252,10 @@ def draw_price_chart(symbol: str = "XAUUSD", df: Optional[pd.DataFrame] = None, 
                 return None
             data_source = source
         
+        # Ensure data is sorted by Date (Oldest to Newest)
+        # This fixes the "inverted chart" issue if data comes in reverse order
+        df.sort_index(inplace=True)
+        
         # Decision: Draw Volume only if source is MT5
         draw_volume = (data_source == "MT5")
 

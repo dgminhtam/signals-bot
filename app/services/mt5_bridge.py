@@ -84,9 +84,13 @@ class MT5DataClient:
             df.set_index('Time', inplace=True)
             
             # Convert múi giờ
+            # Convert múi giờ
             if df.index.tz is None:
                 df.index = df.index.tz_localize('UTC')
             df.index = df.index.tz_convert('Asia/Ho_Chi_Minh')
+            
+            # Ensure data is sorted by Time (Ascending)
+            df.sort_index(inplace=True)
             
             return df
 
