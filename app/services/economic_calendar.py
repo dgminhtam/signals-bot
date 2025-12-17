@@ -54,7 +54,7 @@ class EconomicCalendarService:
     def sync_schedule_to_db(self):
         """
         Đồng bộ lịch từ JSON vào DB.
-        Sử dụng logic FUZZY DELETE (±1 ngày) để dọn dẹp các tin trùng lặp do lệch giờ.
+        Sử dụng logic FUZZY DELETE (±1 ngày) để dọn dẹp các tin trùng lặp.
         """
         events = self.fetch_schedule_json()
         if not events: return
@@ -71,7 +71,7 @@ class EconomicCalendarService:
                     
                     if impact not in ['High', 'Medium']: continue
 
-                    # JSON gốc luôn có timezone (vd: -05:00), dateutil tự hiểu và đổi về UTC chuẩn
+                    # JSON gốc luôn có timezone, dateutil tự hiểu và đổi về UTC chuẩn
                     date_str = item.get('date')
                     dt = date_parser.parse(date_str)
                     dt_utc = dt.astimezone(tz.UTC)
@@ -124,11 +124,12 @@ class EconomicCalendarService:
     def fetch_realtime_results_html(self):
         """
         Quét HTML để lấy kết quả Actual.
-        LOGIC MỚI: EXACT UTC MATCH.
-        Giả định web hiển thị giờ VN (GMT+7) -> Đổi sang UTC -> Khớp chính xác với DB.
+        URL: Quét toàn bộ tuần (Mặc định của ForexFactory).
+        Logic: Exact UTC Match (Server VN -> UTC Conversion).
         """
-        url = f"{self.base_url}?day=today"
-        logger.info(f"⚡ Scanning Real-time HTML: {url}")
+        # Không cần tham số ?day=... để lấy mặc định cả tuần
+        url = self.base_url 
+        logger.info(f"⚡ Scanning Real-time HTML (Weekly View): {url}")
         
         try:
             response = requests.get(url, headers=self.headers, impersonate="chrome120", timeout=30)
@@ -180,7 +181,6 @@ class EconomicCalendarService:
                             result_time = last_time_str
 
                         # 4. QUY ĐỔI MÚI GIỜ (VN -> UTC)
-                        # Hàm này sẽ hiểu "9:45pm" là giờ VN và đổi về "14:45" UTC
                         dt_utc = self.parse_datetime_html(current_date_str, result_time)
                         
                         if not dt_utc: continue
@@ -189,7 +189,6 @@ class EconomicCalendarService:
                         date_only_utc = dt_utc.strftime('%Y-%m-%d')
                         
                         # 5. UPDATE CHÍNH XÁC (EXACT MATCH)
-                        # Tìm tin cùng Tên, cùng Tiền và CÙNG NGÀY (trong DB cũng là UTC)
                         c.execute('''
                             UPDATE economic_events 
                             SET actual = ? 
@@ -203,7 +202,7 @@ class EconomicCalendarService:
                             logger.info(f"✅ Updated Actual for '{title}' ({currency}): {actual} [Date: {date_only_utc}]")
                             conn.commit()
                             
-                    except Exception as row_e:
+                    except Exception:
                         continue
                         
         except Exception as e:
@@ -253,9 +252,8 @@ class EconomicCalendarService:
             # 1. Sync & Update
             self.sync_schedule_to_db()
             
-            incomplete = database.get_incomplete_events_today()
-            if incomplete:
-                self.fetch_realtime_results_html()
+            # Luôn quét HTML để update actual (vì URL mặc định lấy cả tuần)
+            self.fetch_realtime_results_html()
             
             now_utc = datetime.now(tz.UTC)
             
