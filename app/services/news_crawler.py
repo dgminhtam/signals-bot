@@ -243,10 +243,10 @@ def get_gold_news(lookback_minutes: Optional[int] = None, fast_mode: bool = Fals
     Returns:
         List[Dict]: Danh sách các bài viết MỚI vừa được thêm vào DB.
     """
-    logger.info(">>> KHỞI TẠO DATABASE...")
+    logger.debug(">>> KHỞI TẠO DATABASE...")
     database.init_db() 
     
-    logger.info(f">>> ĐANG QUÉT TIN TỨC... (Lookback: {lookback_minutes if lookback_minutes else '24h'})")
+    logger.debug(f">>> ĐANG QUÉT TIN TỨC... (Lookback: {lookback_minutes if lookback_minutes else '24h'})")
     now_utc = datetime.now(timezone.utc)
     
     # Xác định giới hạn thời gian
@@ -272,7 +272,7 @@ def get_gold_news(lookback_minutes: Optional[int] = None, fast_mode: bool = Fals
             feed = get_rss_feed_data(rss_url, timeout=timeout_cfg)
             if feed and feed.entries:
                 entries = feed.entries
-                logger.info(f"-> RSS {source_name}: Quét {len(entries)} bài...")
+                logger.debug(f"-> RSS {source_name}: Quét {len(entries)} bài...")
             else:
                 raise Exception("RSS Empty/Fail")
         except:
@@ -356,7 +356,7 @@ def get_gold_news(lookback_minutes: Optional[int] = None, fast_mode: bool = Fals
                 # Polite Delay: Random sleep to avoid IP Ban/Rate Limit
                 if not fast_mode:
                     sleep_time = random.uniform(3, 6)
-                    logger.info(f"   ...Sleeping {sleep_time:.1f}s...")
+                    logger.debug(f"   ...Sleeping {sleep_time:.1f}s...")
                     time.sleep(sleep_time)
 
     logger.info("="*60)

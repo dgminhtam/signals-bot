@@ -14,7 +14,7 @@ logger = config.logger
 
 def main():
     try:
-        logger.info("⚡ [ALERT WORKER] BẮT ĐẦU QUÉT TIN NÓNG...")
+        logger.debug("⚡ [ALERT WORKER] BẮT ĐẦU QUÉT TIN NÓNG...")
         
         # 1. Trigger Crawler
         news_crawler.get_gold_news(lookback_minutes=5, fast_mode=True)
@@ -23,11 +23,11 @@ def main():
         recent_articles = database.get_unalerted_news(lookback_minutes=5)
 
         if not recent_articles:
-            logger.info("   -> Không có tin mới chưa xử lý trong 5 phút qua.")
-            logger.info("⚡ [ALERT WORKER] HOÀN TẤT.")
+            logger.debug("   -> Không có tin mới chưa xử lý trong 5 phút qua.")
+            logger.debug("⚡ [ALERT WORKER] HOÀN TẤT.")
             return
 
-        logger.info(f"   -> Tìm thấy {len(recent_articles)} tin chưa Alert. Đang checking...")
+        logger.debug(f"   -> Tìm thấy {len(recent_articles)} tin chưa Alert. Đang checking...")
 
         for article in recent_articles:
             # Defense Layer
@@ -148,7 +148,7 @@ def main():
             else:
                 pass
 
-        logger.info("⚡ [ALERT WORKER] HOÀN TẤT.")
+        logger.debug("⚡ [ALERT WORKER] HOÀN TẤT.")
 
     except Exception as e:
         logger.error(f"❌ Lỗi Alert Worker: {e}", exc_info=True)
