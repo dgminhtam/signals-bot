@@ -93,6 +93,19 @@ def init_db() -> None:
                     status TEXT DEFAULT 'pending'  -- pending, pre_notified, post_notified
                 )
             ''')
+
+            # Tạo bảng trade_signals (MỚI - Task Request)
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS trade_signals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT,
+                    signal_type TEXT, -- BUY/SELL/WAIT
+                    source TEXT,      -- NEWS, AI_REPORT
+                    score REAL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
             conn.commit()
     except Exception as e:
         logger.error(f"Lỗi khởi tạo DB: {e}")
@@ -371,4 +384,66 @@ def check_recent_high_impact_news(minutes: int = 15) -> Optional[str]:
             
     except Exception as e:
         logger.error(f"Lỗi check recent news: {e}")
+        return None
+
+def save_trade_signal(symbol: str, signal_type: str, source: str, score: float) -> bool:
+    """
+    Lưu tín hiệu giao dịch mới vào DB
+    """
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute('''
+                INSERT INTO trade_signals (symbol, signal_type, source, score)
+                VALUES (?, ?, ?, ?)
+            ''', (symbol, signal_type, source, score))
+            conn.commit()
+            return True
+    except Exception as e:
+        logger.error(f"Lỗi save_trade_signal: {e}")
+        return False
+
+def get_latest_valid_signal(symbol: str, ttl_minutes: int = 60) -> Optional[Dict[str, Any]]:
+    """
+    Lấy tín hiệu giao dịch hợp lệ mới nhất.
+    Ưu tiên: 
+      1. Tín hiệu từ NEWS (trong vòng ttl_minutes)
+      2. Nếu không có NEWS, lấy AI_REPORT (trong vòng ttl_minutes)
+    """
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # 1. Tìm tín hiệu NEWS trước
+            c.execute('''
+                SELECT * FROM trade_signals
+                WHERE symbol = ? 
+                AND source = 'NEWS'
+                AND created_at >= datetime('now', ?)
+                ORDER BY created_at DESC
+                LIMIT 1
+            ''', (symbol, f'-{ttl_minutes} minutes'))
+            
+            news_signal = c.fetchone()
+            if news_signal:
+                return dict(news_signal)
+            
+            # 2. Nếu không có NEWS, tìm AI_REPORT
+            c.execute('''
+                SELECT * FROM trade_signals
+                WHERE symbol = ? 
+                AND source = 'AI_REPORT'
+                AND created_at >= datetime('now', ?)
+                ORDER BY created_at DESC
+                LIMIT 1
+            ''', (symbol, f'-{ttl_minutes} minutes'))
+            
+            ai_signal = c.fetchone()
+            if ai_signal:
+                return dict(ai_signal)
+                
+            return None
+            
+    except Exception as e:
+        logger.error(f"Lỗi get_latest_valid_signal: {e}")
         return None

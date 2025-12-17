@@ -134,7 +134,9 @@ def main():
                         news_data = {
                             'title': headline_vi,
                             'score': score_val,
-                            'trend': trend_est # Estimated
+                            'trend': trend_est, # Estimated
+                            'source': 'NEWS',   # Add Source
+                            'symbol': 'XAUUSD'  # Add Symbol
                         }
                         trader.process_news_signal(news_data)
                 except Exception as e:
