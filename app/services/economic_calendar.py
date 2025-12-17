@@ -104,8 +104,10 @@ class EconomicCalendarService:
                     currency = item.get('country', 'USD')
                     impact = item.get('impact', 'Low')
                     
-                    # Filter Low impact
-                    if impact not in ['High', 'Medium']: continue
+                    # Filter High Impact Only (SIẾT CHẶT)
+                    if impact != 'High': 
+                        # logger.info(f"Skipping {title} ({impact})")
+                        continue
 
                     # JSON date -> UTC
                     date_str = item.get('date')

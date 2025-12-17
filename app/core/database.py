@@ -274,6 +274,7 @@ def get_pending_pre_alerts(minutes_window: int = 60) -> List[Dict[str, Any]]:
                 WHERE timestamp > datetime('now') 
                 AND timestamp <= datetime('now', ?)
                 AND status = 'pending'
+                AND impact = 'High'
             ''', (f'+{minutes_window} minutes',))
             return [dict(row) for row in c.fetchall()]
     except Exception as e:
@@ -291,6 +292,7 @@ def get_pending_post_alerts() -> List[Dict[str, Any]]:
                 WHERE actual IS NOT NULL 
                 AND actual != '' 
                 AND status != 'post_notified'
+                AND impact = 'High'
             ''')
             return [dict(row) for row in c.fetchall()]
     except Exception as e:
