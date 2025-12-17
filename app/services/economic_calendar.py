@@ -22,6 +22,7 @@ CACHE_TTL = 3600  # 60 minutes
 
 class EconomicCalendarService:
     def __init__(self):
+        # 1. URL Mặc định (Scan cả tuần)
         self.base_url = "https://www.forexfactory.com/calendar"
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -31,8 +32,12 @@ class EconomicCalendarService:
             os.makedirs("data")
 
     def fetch_schedule_json(self) -> List[Dict]:
-        """Lấy lịch sự kiện từ JSON API."""
+        """
+        Lấy lịch sự kiện từ JSON API. 
+        Mục tiêu: Tạo khung (Skeleton) dữ liệu với giờ UTC chuẩn.
+        """
         try:
+            # Check Cache
             if os.path.exists(CACHE_FILE):
                 mod_time = os.path.getmtime(CACHE_FILE)
                 if time.time() - mod_time < CACHE_TTL:
@@ -53,8 +58,7 @@ class EconomicCalendarService:
 
     def sync_schedule_to_db(self):
         """
-        Đồng bộ lịch từ JSON vào DB.
-        Sử dụng logic FUZZY DELETE (±1 ngày) để dọn dẹp các tin trùng lặp.
+        Đồng bộ từ JSON vào DB.
         """
         events = self.fetch_schedule_json()
         if not events: return
@@ -69,20 +73,24 @@ class EconomicCalendarService:
                     currency = item.get('country', 'USD')
                     impact = item.get('impact', 'Low')
                     
+                    # Filter Low impact to save DB space (optional, but good practice)
                     if impact not in ['High', 'Medium']: continue
 
-                    # JSON gốc luôn có timezone, dateutil tự hiểu và đổi về UTC chuẩn
+                    # JSON date is usually ISO with offset, e.g. "2024-01-24T08:15:00-05:00"
+                    # dateutil handles this correctly and we convert to UTC.
                     date_str = item.get('date')
                     dt = date_parser.parse(date_str)
                     dt_utc = dt.astimezone(tz.UTC)
                     timestamp_iso = dt_utc.strftime('%Y-%m-%d %H:%M:%S')
                     date_only = dt_utc.strftime('%Y-%m-%d')
                     
-                    # ID Deterministic
+                    # Generate ID
                     safe_title = title.replace(" ", "_").replace("/", "").replace(":", "")
                     id_str = f"{timestamp_iso}_{currency}_{safe_title}"
                     
-                    # 1. Tìm Status cũ (để bảo lưu trạng thái đã báo)
+                    # 1. Preserve Status
+                    existing_status = 'pending'
+                    # Check Fuzzy Range to find previous entry
                     c.execute('''
                         SELECT status FROM economic_events
                         WHERE title = ? 
@@ -91,13 +99,12 @@ class EconomicCalendarService:
                     ''', (title, currency, date_only))
                     
                     rows = c.fetchall()
-                    existing_status = 'pending'
                     for r in rows:
                         if r['status'] in ['pre_notified', 'post_notified']:
                             existing_status = r['status']
                             break
-                    
-                    # 2. Xóa sạch bản ghi cũ trong vùng ±1 ngày
+
+                    # 2. Cleanup Duplicates (Fuzzy Delete)
                     c.execute('''
                         DELETE FROM economic_events 
                         WHERE title = ? 
@@ -105,7 +112,7 @@ class EconomicCalendarService:
                         AND date(timestamp) BETWEEN date(?, '-1 day') AND date(?, '+1 day')
                     ''', (title, currency, date_only))
 
-                    # 3. Insert bản ghi chuẩn
+                    # 3. Insert New
                     c.execute('''
                         INSERT INTO economic_events (id, title, currency, impact, timestamp, forecast, previous, actual, status)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -113,7 +120,8 @@ class EconomicCalendarService:
                         id_str, title, currency, impact, timestamp_iso, 
                         item.get('forecast', ''), 
                         item.get('previous', ''), 
-                        "", existing_status
+                        "", # Actual empty initially
+                        existing_status
                     ))
                     count += 1
                 except Exception: continue
@@ -123,12 +131,12 @@ class EconomicCalendarService:
 
     def fetch_realtime_results_html(self):
         """
-        Quét HTML để lấy kết quả Actual.
-        URL: Quét toàn bộ tuần (Mặc định của ForexFactory).
-        Logic: Exact UTC Match (Server VN -> UTC Conversion).
+        Quét HTML để lấy `Actual` value.
+        QUAN TRỌNG: 
+        - Web hiển thị giờ VN (Do IP VN).
+        - Cần convert về UTC để khớp với DB.
         """
-        # Không cần tham số ?day=... để lấy mặc định cả tuần
-        url = self.base_url 
+        url = self.base_url  # URL default (Weekly view)
         logger.info(f"⚡ Scanning Real-time HTML (Weekly View): {url}")
         
         try:
@@ -148,17 +156,18 @@ class EconomicCalendarService:
                 
                 for row in rows:
                     try:
-                        # 1. Lấy ngày (Header)
+                        # 1. Extract Date Header (e.g. "Tue Dec 16")
                         if "calendar__row--new-day" in row.get("class", []):
                             d_tag = row.find("span", class_="date")
                             if d_tag:
+                                raw_date = d_tag.text.strip()
                                 # Clean: "Tue Dec 16 Oct Data" -> "Tue Dec 16"
-                                current_date_str = " ".join(d_tag.text.strip().split()[:3])
-                                last_time_str = ""
+                                current_date_str = " ".join(raw_date.split()[:3])
+                                last_time_str = "" # Reset time for new day
                         
                         if "data-event-id" not in row.attrs: continue
 
-                        # 2. Lấy thông tin
+                        # 2. Extract Fields
                         title_tag = row.find("span", class_="calendar__event-title")
                         currency_tag = row.find("td", class_="calendar__currency")
                         actual_tag = row.find("td", class_="calendar__actual")
@@ -169,26 +178,24 @@ class EconomicCalendarService:
                         currency = currency_tag.text.strip()
                         actual = actual_tag.text.strip()
                         
-                        if not actual: continue
+                        if not actual: continue # No data to update
 
-                        # 3. Lấy giờ (Time)
+                        # 3. Handle Time (Grouped events handling)
                         time_tag = row.find("td", class_="calendar__time")
                         result_time = time_tag.text.strip() if time_tag else ""
                         
                         if result_time:
                             last_time_str = result_time
                         elif last_time_str:
-                            result_time = last_time_str
-
-                        # 4. QUY ĐỔI MÚI GIỜ (VN -> UTC)
-                        dt_utc = self.parse_datetime_html(current_date_str, result_time)
+                            result_time = last_time_str # Inherit
                         
+                        # 4. CRITICAL: Parse & Convert Timezone (VN -> UTC)
+                        dt_utc = self.parse_datetime_html(current_date_str, result_time)
                         if not dt_utc: continue
                         
-                        # Lấy ngày UTC chuẩn để tìm trong DB
                         date_only_utc = dt_utc.strftime('%Y-%m-%d')
                         
-                        # 5. UPDATE CHÍNH XÁC (EXACT MATCH)
+                        # 5. EXACT MATCH UPDATE
                         c.execute('''
                             UPDATE economic_events 
                             SET actual = ? 
@@ -199,19 +206,21 @@ class EconomicCalendarService:
                         ''', (actual, title, currency, date_only_utc))
                         
                         if c.rowcount > 0:
-                            logger.info(f"✅ Updated Actual for '{title}' ({currency}): {actual} [Date: {date_only_utc}]")
+                            logger.info(f"✅ Updated Actual for '{title}' ({currency}): {actual} [UTC Date: {date_only_utc}]")
                             conn.commit()
-                            
-                    except Exception:
-                        continue
+
+                    except Exception: continue
                         
         except Exception as e:
             logger.error(f"❌ Error scanning HTML: {e}")
 
     def parse_datetime_html(self, date_str, time_str):
         """
-        Helper: Parse chuỗi ngày giờ từ HTML.
-        QUAN TRỌNG: Gán múi giờ 'Asia/Ho_Chi_Minh' rồi đổi sang UTC.
+        Parse HTML Date/Time string.
+        Logic:
+        1. Parse Text -> Naive Datetime
+        2. Assign 'Asia/Ho_Chi_Minh' (Local IP Time)
+        3. Convert -> UTC
         """
         try:
             if not date_str or not time_str: return None
@@ -223,23 +232,27 @@ class EconomicCalendarService:
             else:
                 clean_date = date_str
             
-            # Tạo chuỗi đầy đủ: "Dec 16 2025 9:45pm"
-            full_str = f"{clean_date} {datetime.now().year} {time_str}"
+            # Full string: "Dec 16 2024 9:45pm"
+            # Note: Need correct year. Simple assumption: Current year.
+            # Edge case: End of year transition could be tricky, but for now Current Year is standard.
+            current_year = datetime.now().year
+            full_str = f"{clean_date} {current_year} {time_str}"
             
-            # 1. Parse ra datetime (chưa có múi giờ)
+            # 1. Parse Naive
             dt_naive = date_parser.parse(full_str)
             
-            # 2. Gán múi giờ Việt Nam (Vì web đang hiển thị giờ VN)
+            # 2. FORCE Local Timezone (VN)
             vn_tz = tz.gettz('Asia/Ho_Chi_Minh')
             dt_vn = dt_naive.replace(tzinfo=vn_tz)
             
-            # 3. Đổi sang UTC để khớp với Database
+            # 3. Convert to UTC
             return dt_vn.astimezone(tz.UTC)
             
-        except Exception: 
+        except Exception:
             return None
 
     def _format_vn_time(self, utc_timestamp_str):
+        """Helper to display UTC timestamp as VN Time string"""
         try:
             ts = date_parser.parse(utc_timestamp_str)
             if ts.tzinfo is None: ts = ts.replace(tzinfo=tz.UTC)
@@ -249,30 +262,31 @@ class EconomicCalendarService:
 
     def process_calendar_alerts(self):
         try:
-            # 1. Sync & Update
+            # Sync Schedule
             self.sync_schedule_to_db()
             
-            # Luôn quét HTML để update actual (vì URL mặc định lấy cả tuần)
+            # Update Actuals
             self.fetch_realtime_results_html()
             
             now_utc = datetime.now(tz.UTC)
             
-            # 2. Pre-Alerts
+            # Pre Alerts
             pre_alerts = database.get_pending_pre_alerts(60)
             for event in pre_alerts:
-                ts = date_parser.parse(event['timestamp'])
+                ts = date_parser.parse(event['timestamp']) # UTC
                 if ts.tzinfo is None: ts = ts.replace(tzinfo=tz.UTC)
                 diff = (ts - now_utc).total_seconds() / 60
                 
-                if diff < -10: 
+                # If parsed incorrectly/old, skip
+                if diff < -10:
                     database.update_event_status(event['id'], 'pre_notified')
                     continue
-
+                
                 time_str = self._format_vn_time(event['timestamp'])
                 self.send_pre_alert(event, int(diff), time_str)
                 database.update_event_status(event['id'], 'pre_notified')
                 
-            # 3. Post-Alerts
+            # Post Alerts
             post_alerts = database.get_pending_post_alerts()
             for event in post_alerts:
                 time_str = self._format_vn_time(event['timestamp'])
@@ -280,7 +294,7 @@ class EconomicCalendarService:
                 database.update_event_status(event['id'], 'post_notified')
 
         except Exception as e:
-            logger.error(f"Error process_calendar: {e}")
+            logger.error(f"Error in process_calendar_alerts: {e}")
 
     def send_pre_alert(self, event, minutes_left, time_str):
         analysis = ai_engine.analyze_pre_economic_data(event)
