@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import time
 from datetime import datetime
 from curl_cffi import requests
 from bs4 import BeautifulSoup
@@ -20,6 +21,34 @@ HEADERS = {
 
 OUTPUT_FILE = "data/debug_actuals.json"
 
+def fetch_with_rotation(url):
+    """
+    Fetch URL with Browser Rotation to handle 403 Forbidden
+    """
+    browsers = ["chrome120", "safari15_5", "chrome110", "edge101", "safari_ios_16_5"]
+    
+    for browser in browsers:
+        try:
+            print(f"   🔄 Trying with impersonate='{browser}'...")
+            response = requests.get(url, headers=HEADERS, impersonate=browser, timeout=30)
+            
+            if response.status_code == 200:
+                print(f"   ✅ Success with {browser}")
+                return response
+            elif response.status_code == 403:
+                print(f"   ⚠️ Blocked 403 ({browser}). Retrying in 3s...")
+                time.sleep(3)
+            else:
+                print(f"   ⚠️ Failed {response.status_code} ({browser}). Retrying...")
+                time.sleep(3)
+
+        except Exception as e:
+            print(f"   ❌ Connection Error ({browser}): {e}")
+            time.sleep(3)
+    
+    print(f"❌ All browsers failed to fetch URL: {url}")
+    return None
+
 def fetch_and_parse():
     all_events = []
     
@@ -30,12 +59,15 @@ def fetch_and_parse():
 
     for url in URLS:
         print(f"\n📡 Requesting: {url}")
-        try:
-            response = requests.get(url, headers=HEADERS, impersonate="chrome120", timeout=30)
-            if response.status_code != 200:
-                print(f"❌ Failed to fetch {url}: {response.status_code}")
-                continue
+        
+        # USE ROTATION
+        response = fetch_with_rotation(url)
+        
+        if not response:
+            print(f"❌ Failed to fetch {url} after rotation.")
+            continue
             
+        try:
             soup = BeautifulSoup(response.content, "html.parser")
             table = soup.find("table", class_="calendar__table")
             if not table:
@@ -80,6 +112,7 @@ def fetch_and_parse():
                 actual_tag = row.find("td", class_="calendar__actual")
                 forecast_tag = row.find("td", class_="calendar__forecast")
                 time_tag = row.find("td", class_="calendar__time")
+                impact_tag = row.find("td", class_="calendar__impact")
 
                 # Skip invalid rows (e.g. ad rows or separators without title)
                 if not title_tag:
@@ -93,11 +126,23 @@ def fetch_and_parse():
                     # If time is empty, inherit from previous row in the same block
                     time_val = last_time_str
 
+                # Handling Impact
+                impact_str = "Unknown"
+                if impact_tag:
+                    span = impact_tag.find("span")
+                    if span:
+                        classes = span.get("class", [])
+                        if "icon--ff-impact-red" in classes: impact_str = "High"
+                        elif "icon--ff-impact-ora" in classes: impact_str = "Medium"
+                        elif "icon--ff-impact-yel" in classes: impact_str = "Low"
+                        elif "icon--ff-impact-gra" in classes: impact_str = "Non-Econ"
+
                 event_data = {
                     "raw_date": current_date_str,
                     "parsed_date": parsed_date_str,
                     "time": time_val,
                     "currency": currency_tag.text.strip() if currency_tag else "",
+                    "impact": impact_str,
                     "event": title_tag.text.strip(),
                     "actual": actual_tag.text.strip() if actual_tag else "",
                     "forecast": forecast_tag.text.strip() if forecast_tag else ""
@@ -107,10 +152,13 @@ def fetch_and_parse():
 
                 # Print to console if Actual exists (Visual check)
                 if event_data['actual']:
-                    print(f"✅ [{event_data['parsed_date']} {event_data['time']}] {event_data['currency']} - {event_data['event']}: {event_data['actual']}")
+                    print(f"✅ [{event_data['parsed_date']} {event_data['time']}] [{impact_str}] {event_data['currency']} - {event_data['event']}: {event_data['actual']}")
+                else:
+                    # Print all valid events found (even without actual) to check impact
+                    print(f"   [{event_data['parsed_date']} {event_data['time']}] [{impact_str}] {event_data['currency']} - {event_data['event']}")
 
         except Exception as e:
-            print(f"❌ Error processing {url}: {e}")
+            print(f"❌ Error processing HTML: {e}")
 
     # Save to JSON
     print(f"\n💾 Saving {len(all_events)} events to JSON...")
