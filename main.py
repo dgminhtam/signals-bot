@@ -83,7 +83,7 @@ def job_auto_trade(force=False):
         
         # Init & Run
         # Volume mặc định 0.01 (hoặc lấy từ config nếu muốn)
-        trader = AutoTrader("XAUUSD", volume=0.01)
+        trader = AutoTrader("XAUUSD")
         trader.analyze_and_trade()
         
         logger.info("✅ Auto Trader Job Completed.")
