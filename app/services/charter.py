@@ -316,10 +316,8 @@ def draw_price_chart(symbol: str = "XAUUSD", df: Optional[pd.DataFrame] = None, 
         # Assuming H1 frequency, but robust to use Timedelta
         future_dates = pd.date_range(start=last_date + pd.Timedelta(hours=1), periods=padding_candles, freq='h')
         
-        # Create empty padding DF and ensure dtypes match to avoid FutureWarning
         padding_df = pd.DataFrame(index=future_dates, columns=df.columns)
-        if not df.empty:
-             padding_df = padding_df.astype(df.dtypes)
+        padding_df[:] = np.nan
         
         # Nối df gốc và padding
         plot_df = pd.concat([df, padding_df])
