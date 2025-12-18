@@ -41,7 +41,7 @@ class EconomicCalendarService:
         
         for browser in browsers:
             try:
-                # logger.info(f"🌐 Fetching {url} with impersonate='{browser}'...") # Giảm log spam
+                logger.info(f"🌐 Fetching {url} with impersonate='{browser}'...")
                 response = requests.get(url, headers=self.headers, impersonate=browser, timeout=30)
                 
                 if response.status_code == 200:
@@ -106,7 +106,7 @@ class EconomicCalendarService:
                     
                     # Filter High Impact Only (SIẾT CHẶT)
                     if impact != 'High': 
-                        # logger.info(f"Skipping {title} ({impact})")
+                        logger.info(f"Skipping {title} ({impact})")
                         continue
 
                     # JSON date -> UTC
@@ -127,7 +127,7 @@ class EconomicCalendarService:
                         WHERE title = ? 
                         AND currency = ? 
                         AND date(timestamp) BETWEEN date(?, '-1 day') AND date(?, '+1 day')
-                    ''', (title, currency, date_only))
+                    ''', (title, currency, date_only, date_only))
                     
                     rows = c.fetchall()
                     for r in rows:
@@ -141,7 +141,7 @@ class EconomicCalendarService:
                         WHERE title = ? 
                         AND currency = ? 
                         AND date(timestamp) BETWEEN date(?, '-1 day') AND date(?, '+1 day')
-                    ''', (title, currency, date_only))
+                    ''', (title, currency, date_only, date_only))
 
                     # 3. Insert New
                     c.execute('''
@@ -154,8 +154,11 @@ class EconomicCalendarService:
                         "", # Actual empty
                         existing_status
                     ))
+                    logger.info(f"Inserted {title} ({impact})")
                     count += 1
-                except Exception: continue
+                except Exception as e:
+                    logger.error(f"❌ Lỗi khi import '{item.get('title', 'Unknown')}': {str(e)}")
+                    continue
             
             conn.commit()
         logger.info(f"✅ Synced {count} High/Medium events to DB.")
