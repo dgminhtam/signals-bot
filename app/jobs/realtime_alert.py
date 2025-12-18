@@ -73,15 +73,12 @@ async def main():
                 else:
                     warn_text = "⚠️ TÁC ĐỘNG: TRUNG BÌNH"
 
-                message = f"""
-🚨 <b>{headline_vi}</b>
-
-📝 {summary_vi}
-
-💥 <b>Phân tích:</b> {impact_vi}
-{warn_text}
-#Breaking
-"""
+                message = (
+                        f"🚨 <b>{headline_vi}</b>\n\n"
+                        f"📝 {summary_vi}\n"
+                        f"💥 <b>Phân tích:</b> {impact_vi}\n"
+                        f"{warn_text} #Breaking"
+                    )
                 image_url = article.get("image_url")
                 if image_url:
                      await telegram_bot.send_report_to_telegram(message, [image_url])
@@ -93,30 +90,34 @@ async def main():
                     from app.services.wordpress_service import wordpress_service
                     if wordpress_service.enabled:
                         wp_title = f"🚨 {headline_vi}"
-                        wp_content = f"""
-                        <p>📝 {summary_vi}</p>
-                        <p>💥 <strong>Phân tích:</strong> {impact_vi}</p>
-                        <p><strong>{warn_text}</strong></p>
-                        """
+                        wp_content = (
+                            f"📝 {summary_vi}\n"
+                            f"💥 <strong>Phân tích:</strong> {impact_vi}\n"
+                            f"<strong>{warn_text}</strong>"
+                        )
                         # Assuming create_liveblog_entry is sync
                         await asyncio.to_thread(
                             wordpress_service.create_liveblog_entry, 
                             title=wp_title, content=wp_content, image_url=image_url
                         )
-                except Exception: pass
+                except Exception as e: 
+                    logger.error(f"❌ WordPress Error: {e}")
                 
                 # --- TRIGGER AUTO TRADER (ACTIONABLE) ---
                 try:
                     if score_val >= 5: 
                         logger.info("   🤖 Activating Trader response...")
                         trader = AutoTrader()
-                        
-                        trend_est = "NEUTRAL"
-                        impact_lower = impact_vi.lower()
-                        if "tăng" in impact_lower or "hỗ trợ" in impact_lower or "bullish" in impact_lower:
+                        ai_trend = analysis.get('trend_forecast', 'NEUTRAL').upper()
+                        if ai_trend == "BULLISH":
                             trend_est = "BULLISH"
-                        elif "giảm" in impact_lower or "áp lực" in impact_lower or "bearish" in impact_lower:
+                            logger.info("📈 AI Prediction: Vàng sẽ TĂNG giá.")
+                        elif ai_trend == "BEARISH":
                             trend_est = "BEARISH"
+                            logger.info("📉 AI Prediction: Vàng sẽ GIẢM giá.")
+                        else:
+                            trend_est = "NEUTRAL"
+                            logger.info("⚖️ AI Prediction: Không rõ xu hướng hoặc Sideway.")
                             
                         news_data = {
                             'title': headline_vi,

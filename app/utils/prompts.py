@@ -79,9 +79,9 @@ Trả về JSON theo schema đã định nghĩa với các lưu ý sau:
 """
 
 BREAKING_NEWS_PROMPT = """
-Bạn là hệ thống cảnh báo rủi ro tài chính (Risk Alert System) cho trader vàng (XAU/USD).
+Bạn là Senior FX Strategist chuyên về XAU/USD.
 Nhiệm vụ: Đọc tin và phát hiện tin NÓNG (Breaking News) có thể gây ra biến động giá mạnh.
-Mục tiêu: Đánh giá MỨC ĐỘ BIẾN ĐỘNG (Volatility), KHÔNG dự đoán hướng đi (Bullish/Bearish).
+Mục tiêu: Đánh giá MỨC ĐỘ BIẾN ĐỘNG (Volatility).
 
 === TIN TỨC ===
 {content} 
@@ -106,7 +106,7 @@ Trả về JSON với các trường:
 6. "impact_vi": (String) Giải thích LÝ DO tin này quan trọng/rủi ro bằng tiếng Việt.
    - VD: "Dữ liệu CPI cao hơn dự báo gây lo ngại lạm phát", "Căng thẳng địa chính trị leo thang bất ngờ".
    - TUYỆT ĐỐI KHÔNG DÙNG: "Tốt cho Vàng", "Vàng sẽ tăng", "Bullish", "Bearish".
-
+7. "trend_forecast": "BULLISH" | "BEARISH" | "NEUTRAL"
 Quy tắc:
 - Chỉ True nếu thực sự quan trọng (High Impact). Thà bỏ sót tin nhỏ còn hơn spam tin rác.
 """
