@@ -79,7 +79,7 @@ def main():
 
 💥 <b>Phân tích:</b> {impact_vi}
 {warn_text}
-#XAUUSD #Breaking
+#Breaking
 """
                 image_url = article.get("image_url")
                 if image_url:

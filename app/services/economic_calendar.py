@@ -338,8 +338,8 @@ class EconomicCalendarService:
             f"   • Dự báo: {forecast}\n"
             f"   • Kỳ trước: {previous}\n\n"
             f"💡 <b>Phân tích:</b> {exp}\n"
-            f"📈 <b>Kịch bản Tăng:</b> {high}\n"
-            f"📉 <b>Kịch bản Giảm:</b> {low}\n\n"
+            f"📈 <b>Kịch bản tăng:</b> {high}\n"
+            f"📉 <b>Kịch bản giảm:</b> {low}\n\n"
             f"#PreNews #{event['currency']}"
         )
         telegram_bot.send_message(msg)

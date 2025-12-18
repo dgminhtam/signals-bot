@@ -72,7 +72,7 @@ NEWS_SOURCES = [
         "selector": None  # Generic fallback
     },
     {
-        "name": "Investing.com",
+        "name": "Investing",
         "rss": "https://www.investing.com/rss/news_25.rss",
         "web": "https://www.investing.com/news/commodities",
         "selector": None  # Generic fallback

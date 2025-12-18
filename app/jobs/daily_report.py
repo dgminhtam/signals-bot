@@ -91,7 +91,6 @@ def format_telegram_message(data: Dict[str, Any], articles: List[Dict[str, Any]]
         for art in articles:
             source = art.get('source', '')
             if source:
-                # Cleanup: "RSS CNN Money" -> "#cnnmoney", "CNBC World" -> "#cnbcworld"
                 tag = source.lower().replace('rss', '').replace(' ', '').replace('.', '').strip()
                 if tag:
                     hashtags.add(f"#{tag}")
@@ -108,6 +107,10 @@ def main():
         # 1. LẤY TIN
         articles = database.get_unprocessed_articles()
         
+        if not articles:
+            logger.info("🔍 Thông tin đã được phân tích ở phiên trước, bỏ qua phân tích.")
+            return
+
         logger.info(f"🔍 Tìm thấy {len(articles)} tin để xử lý...")
         
         # 2. LẤY DỮ LIỆU THỊ TRƯỜNG (Một lần duy nhất)
