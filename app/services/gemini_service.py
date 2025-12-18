@@ -3,6 +3,7 @@ from typing import List, Dict, Any, Optional
 from app.core import config
 from app.services.ai_base import AIService
 import logging
+import asyncio
 import time
 
 logger = config.logger
@@ -55,9 +56,9 @@ class GeminiService(AIService):
             logger.warning(f"⚠️ Fallback to {config.GEMINI_FALLBACK_MODEL} due to: {e}")
             return genai.GenerativeModel(config.GEMINI_FALLBACK_MODEL, generation_config=config_copy)
 
-    def generate_content(self, prompt: str, schema: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    async def generate_content(self, prompt: str, schema: Optional[Dict[str, Any]] = None) -> Optional[str]:
         """
-        Triển khai generate_content cho Gemini với Retry & Key Rotation
+        Triển khai generate_content cho Gemini với Retry & Key Rotation (Async)
         """
         retries = 10
         attempt = 0
@@ -65,7 +66,8 @@ class GeminiService(AIService):
         while attempt < retries:
             try:
                 model = self._get_model(schema)
-                response = model.generate_content(prompt)
+                # Sử dụng generate_content_async của Google SDK
+                response = await model.generate_content_async(prompt)
                 return response.text
             except Exception as e:
                 error_msg = str(e).lower()
@@ -77,10 +79,10 @@ class GeminiService(AIService):
                     new_key = self.key_manager.switch_key()
                     self._configure_genai(new_key)
                     
-                    # Exponential Backoff: 2^attempt seconds
+                    # Exponential Backoff with Async Sleep
                     backoff_time = min(2 ** attempt, 60)
                     logger.info(f"🔄 Retry #{attempt + 1} - Chờ {backoff_time}s (Exponential Backoff)...")
-                    time.sleep(backoff_time)
+                    await asyncio.sleep(backoff_time)
                 else:
                     logger.error(f"❌ Unrecoverable Gemini Error: {e}")
                     return None

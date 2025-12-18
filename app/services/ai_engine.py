@@ -2,6 +2,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 import json
 import logging
+import asyncio
 from app.core import config
 from app.utils import prompts
 from app.services.ai_base import AIService
@@ -77,9 +78,9 @@ economic_schema = {
      "required": ["headline", "impact_analysis", "sentiment_score", "conclusion"]
 }
 
-# --- BUSINESS LOGIC FUNCTIONS ---
+# --- BUSINESS LOGIC FUNCTIONS (ASYNC) ---
 
-def analyze_market(
+async def analyze_market(
     articles: List[Dict[str, Any]], 
     technical_data: str = "Không có dữ liệu kỹ thuật.",
     last_report: Optional[Dict[str, Any]] = None
@@ -144,9 +145,9 @@ def analyze_market(
         news_text=news_text
     )
 
-    # 3. Gọi AI qua Service Factory
+    # 3. Gọi AI qua Service Factory (Await Async)
     try:
-        response_text = ai_service.generate_content(prompt, schema=analysis_schema)
+        response_text = await ai_service.generate_content(prompt, schema=analysis_schema)
         if not response_text: return None
         
         # Xử lý kết quả JSON
@@ -168,17 +169,17 @@ def analyze_market(
         logger.error(f"❌ Lỗi AI Analysis: {e}")
         return None
 
-def check_breaking_news(content: str) -> Optional[Dict[str, Any]]:
+async def check_breaking_news(content: str) -> Optional[Dict[str, Any]]:
     """
-    Kiểm tra xem tin tức có phải là BREAKING NEWS không.
+    Kiểm tra xem tin tức có phải là BREAKING NEWS không (Async).
     """
     prompt = prompts.BREAKING_NEWS_PROMPT.format(
         content=content[:3000]
     )
     
     try:
-        # Sử dụng Breaking News Schema
-        response_text = ai_service.generate_content(prompt, schema=breaking_news_schema)
+        # Sử dụng Breaking News Schema (Await Async)
+        response_text = await ai_service.generate_content(prompt, schema=breaking_news_schema)
         if not response_text: return None
         
         try:
@@ -193,9 +194,9 @@ def check_breaking_news(content: str) -> Optional[Dict[str, Any]]:
         logger.error(f"❌ Lỗi Breaking News Check: {e}")
         return None
 
-def analyze_economic_data(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+async def analyze_economic_data(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
-    Phân tích sự kiện kinh tế (Actual vs Forecast)
+    Phân tích sự kiện kinh tế (Actual vs Forecast) (Async)
     """
     details = f"""
     Title: {event.get('title', 'N/A')}
@@ -211,7 +212,7 @@ def analyze_economic_data(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     )
     
     try:
-        response_text = ai_service.generate_content(prompt, schema=economic_schema)
+        response_text = await ai_service.generate_content(prompt, schema=economic_schema)
         if not response_text: return None
         
         try:
@@ -234,9 +235,9 @@ economic_pre_schema = {
      "required": ["explanation", "scenario_high", "scenario_low"]
 }
 
-def analyze_pre_economic_data(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+async def analyze_pre_economic_data(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
-    Phân tích kịch bản trước tin (Pre-News)
+    Phân tích kịch bản trước tin (Pre-News) (Async)
     """
     prompt = prompts.ECONOMIC_PRE_ANALYSIS_PROMPT.format(
         title=event.get('title', 'N/A'),
@@ -246,7 +247,7 @@ def analyze_pre_economic_data(event: Dict[str, Any]) -> Optional[Dict[str, Any]]
     )
     
     try:
-        response_text = ai_service.generate_content(prompt, schema=economic_pre_schema)
+        response_text = await ai_service.generate_content(prompt, schema=economic_pre_schema)
         if not response_text: return None
         
         try:

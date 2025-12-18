@@ -1,8 +1,9 @@
-from openai import OpenAI
+from openai import AsyncOpenAI
 from typing import Dict, Any, Optional, List
 from app.core import config
 from app.services.ai_base import AIService
 import logging
+import asyncio
 import time
 
 logger = config.logger
@@ -44,14 +45,14 @@ class OpenAIService(AIService):
         self._init_client()
     
     def _init_client(self, key: Optional[str] = None):
-        """Khởi tạo/Cấu hình lại OpenAI client với key mới"""
+        """Khởi tạo/Cấu hình lại OpenAI client với key mới (AsyncClient)"""
         if not key:
             key = self.key_manager.get_current_key()
-        self.client = OpenAI(api_key=key)
+        self.client = AsyncOpenAI(api_key=key)
 
-    def generate_content(self, prompt: str, schema: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    async def generate_content(self, prompt: str, schema: Optional[Dict[str, Any]] = None) -> Optional[str]:
         """
-        Triển khai generate_content cho OpenAI với Retry & Key Rotation
+        Triển khai generate_content cho OpenAI với Retry & Key Rotation (Async)
         """
         retries = 5
         attempt = 0
@@ -72,7 +73,8 @@ class OpenAIService(AIService):
                 if schema:
                     params["response_format"] = {"type": "json_object"}
                 
-                response = self.client.chat.completions.create(**params)
+                # Async call
+                response = await self.client.chat.completions.create(**params)
                 return response.choices[0].message.content
                 
             except Exception as e:
@@ -86,10 +88,10 @@ class OpenAIService(AIService):
                     new_key = self.key_manager.switch_key()
                     self._init_client(new_key)
                     
-                    # Exponential Backoff
+                    # Exponential Backoff with Async Sleep
                     backoff_time = min(2 ** attempt, 30)  # Max 30s cho OpenAI
                     logger.info(f"🔄 Retry #{attempt + 1} - Chờ {backoff_time}s (Exponential Backoff)...")
-                    time.sleep(backoff_time)
+                    await asyncio.sleep(backoff_time)
                 else:
                     logger.error(f"❌ Unrecoverable OpenAI Error: {e}")
                     return None

@@ -1,8 +1,9 @@
-from groq import Groq
+from groq import AsyncGroq
 from typing import Dict, Any, Optional, List
 from app.core import config
 from app.services.ai_base import AIService
 import logging
+import asyncio
 import time
 
 logger = config.logger
@@ -44,14 +45,14 @@ class GroqService(AIService):
         self._init_client()
     
     def _init_client(self, key: Optional[str] = None):
-        """Khởi tạo/Cấu hình lại Groq client với key mới"""
+        """Khởi tạo/Cấu hình lại Groq client với key mới (AsyncClient)"""
         if not key:
             key = self.key_manager.get_current_key()
-        self.client = Groq(api_key=key)
+        self.client = AsyncGroq(api_key=key)
 
-    def generate_content(self, prompt: str, schema: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    async def generate_content(self, prompt: str, schema: Optional[Dict[str, Any]] = None) -> Optional[str]:
         """
-        Triển khai generate_content cho Groq với Retry & Key Rotation
+        Triển khai generate_content cho Groq với Retry & Key Rotation (Async)
         """
         retries = 5
         attempt = 0
@@ -72,7 +73,8 @@ class GroqService(AIService):
                 if schema:
                     params["response_format"] = {"type": "json_object"}
                 
-                response = self.client.chat.completions.create(**params)
+                # Async call
+                response = await self.client.chat.completions.create(**params)
                 return response.choices[0].message.content
                 
             except Exception as e:
@@ -89,7 +91,7 @@ class GroqService(AIService):
                     # Exponential Backoff (Groq rất nhanh nên backoff ngắn hơn)
                     backoff_time = min(2 ** attempt, 20)  # Max 20s cho Groq
                     logger.info(f"🔄 Retry #{attempt + 1} - Chờ {backoff_time}s (Exponential Backoff)...")
-                    time.sleep(backoff_time)
+                    await asyncio.sleep(backoff_time)
                 else:
                     logger.error(f"❌ Unrecoverable Groq Error: {e}")
                     return None
