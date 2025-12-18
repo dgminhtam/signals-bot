@@ -108,7 +108,6 @@ class EconomicCalendarService:
                     
                     # Filter High Impact Only (SIẾT CHẶT)
                     if impact != 'High': 
-                        logger.info(f"Skipping {title} ({impact})")
                         continue
 
                     # JSON date -> UTC
@@ -155,7 +154,6 @@ class EconomicCalendarService:
                         "", # Actual empty
                         existing_status
                     ))
-                    logger.info(f"Inserted {title} ({impact})")
                     count += 1
                 except Exception as e:
                     logger.error(f"❌ Lỗi khi import '{item.get('title', 'Unknown')}': {str(e)}")
