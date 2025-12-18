@@ -106,7 +106,6 @@ async def get_market_data(symbol: str = "XAUUSD") -> Tuple[Optional[pd.DataFrame
     logger.info(f"📊 Đang lấy dữ liệu thị trường cho {symbol}...")
     
     df = None
-    import time
     
     # 1. Thử MT5 trước (Primary) với Smart Retry
     MT5_MAX_RETRIES = 3
@@ -130,7 +129,7 @@ async def get_market_data(symbol: str = "XAUUSD") -> Tuple[Optional[pd.DataFrame
         # Nếu chưa phải lần cuối, sleep 1 chút để retry
         if attempt < MT5_MAX_RETRIES:
             logger.info("   ...Retrying MT5 in 1.5s...")
-            time.sleep(1.5)
+            await asyncio.sleep(1.5)
 
     logger.warning("❌ Hết số lần thử MT5. Chuyển sang Fallback...")
 

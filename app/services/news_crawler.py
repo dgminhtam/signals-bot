@@ -92,12 +92,18 @@ async def fetch_url(url: str, timeout: int = 30) -> Optional[Any]:
 
 def _parse_article_sync(url: str, html_content: str) -> Dict[str, str]:
     """Hàm đồng bộ để parse article bằng newspaper3k"""
-    if not Article:
-        return {}
+    if not Article: return {}
     try:
-        article = Article(url)
+        # --- FIX: Config tắt cache PHẢI NẰM Ở ĐÂY ---
+        import newspaper
+        conf = newspaper.Config()
+        conf.memoize_articles = False # Fix WinError 3
+        conf.fetch_images = False
+        
+        article = Article(url, config=conf) # Truyền config vào
         article.set_html(html_content)
         article.parse()
+        
         return {
             "text": article.text.strip(),
             "image": article.top_image
@@ -122,16 +128,6 @@ async def get_full_content(url: str, selector: str = None) -> Dict[str, str]:
         return error_res
         
     try:
-        # Bước 2: Parsing - Dùng newspaper3k phân tích HTML
-        import newspaper
-        conf = newspaper.Config()
-        conf.memoize_articles = False  # Tắt cache bài viết để tránh WinError 3
-        conf.fetch_images = False      # Tối ưu tốc độ
-        conf.request_timeout = 10
-
-        article = Article(url, config=conf)
-        article.set_html(response.text) # Nạp HTML đã download (đã bypass TLS)
-        article.parse()
 
         # Chạy parsing (CPU-bound) trong executor
         loop = asyncio.get_running_loop()
