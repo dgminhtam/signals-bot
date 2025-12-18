@@ -20,7 +20,7 @@ def main():
         logger.info("📅 [ECONOMIC WORKER] Đang kiểm tra Lịch Kinh Tế...")
         
         # Đảm bảo Table tồn tại (nếu chạy lần đầu)
-        # database.init_db() # Có thể uncomment nếu chạy worker này độc lập hoàn toàn mà chưa init DB
+        database.init_db()
         
         service = EconomicCalendarService()
         service.process_calendar_alerts()
