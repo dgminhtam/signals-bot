@@ -77,7 +77,8 @@ async def main():
                         f"🚨 <b>{headline_vi}</b>\n\n"
                         f"📝 {summary_vi}\n"
                         f"💥 <b>Phân tích:</b> {impact_vi}\n"
-                        f"{warn_text} #Breaking"
+                        f"{warn_text} \n"
+                        f"#Breaking"
                     )
                 image_url = article.get("image_url")
                 if image_url:
