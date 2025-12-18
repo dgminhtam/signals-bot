@@ -10,6 +10,7 @@ from urllib.parse import urljoin
 from typing import List, Dict, Optional, Any
 from app.core import config
 from app.core import database
+import traceback
 
 try:
     from curl_cffi import requests as c_requests
@@ -99,7 +100,13 @@ def get_full_content(url: str, selector: str = None) -> Dict[str, str]:
         
     try:
         # Bước 2: Parsing - Dùng newspaper3k phân tích HTML
-        article = Article(url)
+        import newspaper
+        conf = newspaper.Config()
+        conf.memoize_articles = False  # Tắt cache bài viết để tránh WinError 3
+        conf.fetch_images = False      # Tối ưu tốc độ
+        conf.request_timeout = 10
+
+        article = Article(url, config=conf)
         article.set_html(response.text) # Nạp HTML đã download (đã bypass TLS)
         article.parse()
         
@@ -116,6 +123,7 @@ def get_full_content(url: str, selector: str = None) -> Dict[str, str]:
 
     except Exception as e:
         logger.error(f"❌ Error getting full content for {url}: {e}")
+        logger.debug(traceback.format_exc()) # Log traceback để debug
         error_res["content"] = f"Lỗi cào dữ liệu: {e}"
         return error_res
 
