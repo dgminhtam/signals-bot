@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from app.core import config
 from app.core import database
+import traceback
 
 # --- Import & Check Dependencies ---
 try:
@@ -121,6 +122,17 @@ async def get_full_content(url: str, selector: str = None) -> Dict[str, str]:
         return error_res
         
     try:
+        # Bước 2: Parsing - Dùng newspaper3k phân tích HTML
+        import newspaper
+        conf = newspaper.Config()
+        conf.memoize_articles = False  # Tắt cache bài viết để tránh WinError 3
+        conf.fetch_images = False      # Tối ưu tốc độ
+        conf.request_timeout = 10
+
+        article = Article(url, config=conf)
+        article.set_html(response.text) # Nạp HTML đã download (đã bypass TLS)
+        article.parse()
+
         # Chạy parsing (CPU-bound) trong executor
         loop = asyncio.get_running_loop()
         parse_result = await loop.run_in_executor(
@@ -139,6 +151,7 @@ async def get_full_content(url: str, selector: str = None) -> Dict[str, str]:
 
     except Exception as e:
         logger.error(f"❌ Error getting full content for {url}: {e}")
+        logger.debug(traceback.format_exc()) # Log traceback để debug
         error_res["content"] = f"Lỗi cào dữ liệu: {e}"
         return error_res
 

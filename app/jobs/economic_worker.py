@@ -17,6 +17,9 @@ async def main():
     try:
         logger.info("📅 [ECONOMIC WORKER] Đang kiểm tra Lịch Kinh Tế...")
         
+        # Đảm bảo Table tồn tại (nếu chạy lần đầu)
+        database.init_db()
+        
         service = EconomicCalendarService()
         await service.process_calendar_alerts()
         

@@ -106,8 +106,10 @@ class EconomicCalendarService:
                     currency = item.get('country', 'USD')
                     impact = item.get('impact', 'Low')
                     
-                    # Filter High Impact Only
-                    if impact != 'High': continue
+                    # Filter High Impact Only (SIẾT CHẶT)
+                    if impact != 'High': 
+                        logger.info(f"Skipping {title} ({impact})")
+                        continue
 
                     # JSON date -> UTC
                     date_str = item.get('date')
@@ -127,7 +129,7 @@ class EconomicCalendarService:
                         WHERE title = ? 
                         AND currency = ? 
                         AND date(timestamp) BETWEEN date(?, '-1 day') AND date(?, '+1 day')
-                    ''', (title, currency, date_only)) as cursor:
+                    ''', (title, currency, date_only, date_only)) as cursor:
                          rows = await cursor.fetchall()
                          for r in rows:
                             if r['status'] in ['pre_notified', 'post_notified']:
@@ -140,7 +142,7 @@ class EconomicCalendarService:
                         WHERE title = ? 
                         AND currency = ? 
                         AND date(timestamp) BETWEEN date(?, '-1 day') AND date(?, '+1 day')
-                    ''', (title, currency, date_only))
+                    ''', (title, currency, date_only, date_only))
 
                     # 3. Insert New
                     await conn.execute('''
@@ -153,8 +155,11 @@ class EconomicCalendarService:
                         "", # Actual empty
                         existing_status
                     ))
+                    logger.info(f"Inserted {title} ({impact})")
                     count += 1
-                except Exception: continue
+                except Exception as e:
+                    logger.error(f"❌ Lỗi khi import '{item.get('title', 'Unknown')}': {str(e)}")
+                    continue
             
             await conn.commit()
         logger.info(f"✅ Synced {count} High events to DB.")
