@@ -108,7 +108,8 @@ async def main():
                                 wordpress_service.create_liveblog_entry, 
                                 title=wp_title, content=wp_content, image_url=image_url
                             )
-                    except Exception: pass
+                    except Exception as e: 
+                        logger.error(f"❌ Failed to create WordPress entry: {e}")
                     
                     # --- TRIGGER AUTO TRADER ---
                     try:
