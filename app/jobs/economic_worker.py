@@ -4,6 +4,7 @@ Worker chuyên biệt cho việc quét Lịch Kinh Tế (Async).
 import sys
 import os
 import asyncio
+from app.core import database
 
 # Thêm path để import module từ root
 sys.path.append(os.getcwd())
