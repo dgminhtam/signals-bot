@@ -13,7 +13,7 @@ logger = config.logger
 
 async def main():
     try:
-        logger.debug("⚡ [ALERT WORKER] BẮT ĐẦU QUÉT TIN NÓNG...")
+        logger.info("⚡ [ALERT WORKER] BẮT ĐẦU QUÉT TIN NÓNG...")
         
         # 1. Trigger Crawler (Async)
         await news_crawler.get_gold_news(lookback_minutes=5, fast_mode=True)
@@ -22,8 +22,8 @@ async def main():
         recent_articles = await database.get_unalerted_news(lookback_minutes=5)
 
         if not recent_articles:
-            logger.debug("   -> Không có tin mới chưa xử lý trong 5 phút qua.")
-            logger.debug("⚡ [ALERT WORKER] HOÀN TẤT.")
+            logger.info("   -> Không có tin mới chưa xử lý trong 5 phút qua.")
+            logger.info("⚡ [ALERT WORKER] HOÀN TẤT.")
             return
 
         logger.info(f"   -> Tìm thấy {len(recent_articles)} tin chưa Alert. Đang checking...")
@@ -48,8 +48,7 @@ async def main():
                 title_lower = article['title'].lower()
                 
                 if not any(k in title_lower for k in URGENT_KEYWORDS):
-                    # Log nhẹ mức debug để không spam console
-                    logger.debug(f"   -> Skip tin: {article['title']} (Không có keyword khẩn cấp)")
+                    logger.info(f"   -> Skip tin: {article['title']} (Không có keyword khẩn cấp)")
                     continue
 
                 # --- 3. Check Breaking AI (Async) ---
@@ -142,7 +141,7 @@ async def main():
                 # QUAN TRỌNG: Luôn đánh dấu đã check để không quét lại lần sau (tránh loop)
                 await database.mark_article_alerted(article['id'])
 
-        logger.debug("⚡ [ALERT WORKER] HOÀN TẤT.")
+        logger.info("⚡ [ALERT WORKER] HOÀN TẤT.")
 
     except Exception as e:
         logger.error(f"❌ Lỗi Alert Worker: {e}", exc_info=True)
