@@ -25,7 +25,6 @@ async def main():
 
         if not recent_articles:
             logger.info("   -> Không có tin mới chưa xử lý trong 5 phút qua.")
-            logger.info("⚡ [ALERT WORKER] HOÀN TẤT.")
             return
 
         logger.info(f"   -> Tìm thấy {len(recent_articles)} tin chưa Alert. Đang checking...")
@@ -137,10 +136,11 @@ async def main():
             else:
                 pass
 
-        logger.debug("⚡ [ALERT WORKER] HOÀN TẤT.")
-
     except Exception as e:
         logger.error(f"❌ Lỗi Alert Worker: {e}", exc_info=True)
+
+    finally:
+        logger.info("⚡ [ALERT WORKER] HOÀN TẤT.")
 
 if __name__ == "__main__":
     asyncio.run(main())

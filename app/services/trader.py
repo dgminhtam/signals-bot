@@ -1,6 +1,3 @@
-"""
-AutoTrader - AI-Sentiment + Fibonacci/Volume Strategy (AsyncIO)
-"""
 import logging
 import asyncio
 import time
