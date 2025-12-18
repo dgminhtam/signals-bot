@@ -1,10 +1,11 @@
 """
-AutoTrader - AI-Sentiment + Fibonacci/Volume Strategy
+AutoTrader - AI-Sentiment + Fibonacci/Volume Strategy (AsyncIO)
 """
 import logging
+import asyncio
 import time
 from datetime import datetime, timedelta
-from app.services.charter import get_market_data, calculate_fibonacci_levels
+from app.services.charter import get_market_data
 from app.services.mt5_bridge import MT5DataClient
 from app.core import database
 from app.core import config
@@ -18,36 +19,38 @@ class AutoTrader:
         self.volume = volume if volume else config.TRADE_VOLUME
         self.client = MT5DataClient()
         
-    def _retry_action(self, func, *args, max_retries=3, delay=1.0):
+    async def _retry_action(self, func, *args, max_retries=3, delay=1.0):
         """
-        Helper thực hiện retry nếu gặp lỗi hoặc phản hồi FAIL
+        Helper thực hiện retry nếu gặp lỗi hoặc phản hồi FAIL (Async)
+        func phải là coroutine function
         """
         for attempt in range(max_retries):
             try:
-                result = func(*args)
+                # Call async function
+                result = await func(*args)
                 
                 # Check MT5 FAIL response
                 if isinstance(result, str) and "FAIL" in result:
                     logger.warning(f"⚠️ Action failed: {result}. Retrying ({attempt+1}/{max_retries})...")
-                    time.sleep(delay)
+                    await asyncio.sleep(delay)
                     continue
                     
                 return result
             except Exception as e:
                 logger.warning(f"⚠️ Action Exception: {e}. Retrying ({attempt+1}/{max_retries})...")
-                time.sleep(delay)
+                await asyncio.sleep(delay)
                 
         return "FAIL|MAX_RETRIES"
 
-    def close_all_positions(self, symbol: str) -> bool:
+    async def close_all_positions(self, symbol: str) -> bool:
         """
-        Đóng TẤT CẢ lệnh của symbol.
+        Đóng TẤT CẢ lệnh của symbol (Async).
         Trả về True nếu sạch lệnh, False nếu vẫn còn.
         """
         logger.info(f"🛡️ DEFENSIVE MODE: Closing ALL positions for {symbol}...")
         
         # 1. Get List
-        positions = self.client.get_open_positions(symbol)
+        positions = await self.client.get_open_positions(symbol)
         if not positions:
             logger.info("   -> No open positions found.")
             return True
@@ -57,13 +60,13 @@ class AutoTrader:
             ticket = pos['ticket']
             logger.info(f"   -> Closing Ticket #{ticket} ({pos['type']})...")
             
-            res = self._retry_action(self.client.close_order, ticket)
+            res = await self._retry_action(self.client.close_order, ticket)
             if "FAIL" in str(res):
                  logger.error(f"   ❌ Failed to close #{ticket}: {res}")
         
         # 3. Double Check
-        time.sleep(1.0) # Wait for MT5 update
-        remaining = self.client.get_open_positions(symbol)
+        await asyncio.sleep(1.0) # Wait for MT5 update
+        remaining = await self.client.get_open_positions(symbol)
         if remaining:
             logger.error(f"   ❌ WARNING: {len(remaining)} positions still open!")
             return False
@@ -71,45 +74,36 @@ class AutoTrader:
         logger.info("   ✅ All positions closed successfully.")
         return True
         
-    def analyze_and_trade(self):
+    async def analyze_and_trade(self):
         """
-        Chiến lược:
-        1. Lấy tín hiệu từ DB (Ưu tiên NEWS > AI REPORT).
-        2. Nếu NEWS: Thực thi ngay (Sniper/Fast).
-        3. Nếu AI: Kiểm tra thêm Technical (Volume, Price) -> Execute.
+        Chiến lược (Async version):
         """
         logger.info(f"🤖 Starting Analysis for {self.symbol} (Vol: {self.volume})...")
 
-        # ===== STEP 0: NEWS FILTER (Giữ nguyên check Pre/Post news cho AI, nhưng nếu Signal là NEWS thì bỏ qua check này?)
-        # Logic: Nếu Signal Source == NEWS, nghĩa là ta ĐANG phản ứng với tin, nên không bị chặn bởi bộ lọc tin.
-        # Nếu Signal Source == AI_REPORT, thì cần tuân thủ bộ lọc tin.
-        
         # 1. Get Signal from DB
-        signal_data = database.get_latest_valid_signal(self.symbol, ttl_minutes=60)
+        signal_data = await database.get_latest_valid_signal(self.symbol, ttl_minutes=60)
         
         if not signal_data:
             logger.info("⏸️ No valid signal in DB (News/AI). Waiting...")
             return "WAIT_NO_SIGNAL"
 
         source = signal_data.get('source', 'UNKNOWN')
-        signal_type = signal_data.get('signal_type', 'WAIT') # BUY/SELL
+        signal_type = signal_data.get('signal_type', 'WAIT')
         score = signal_data.get('score', 0)
         
         logger.info(f"📥 Received Signal: {signal_type} from {source} (Score: {score})")
         
         # ===== CASE A: NEWS SIGNAL (FAST TRACK) =====
         if source == 'NEWS':
-            # Với tin tức, ta bỏ qua phân tích kỹ thuật rườm rà
             logger.info("⚡ NEWS SIGNAL detected! Executing FAST TRACK...")
             
-            # Tuy nhiên vẫn cần check giá hiện tại để tính SL/TP nếu trong DB chưa có (DB chỉ lưu direction)
-            df, _ = get_market_data(self.symbol)
+            df, _ = await get_market_data(self.symbol)
             if df is None or df.empty:
                 logger.error("❌ Failed to get market price for News Order.")
                 return "FAIL_NO_PRICE"
             current_price = df['Close'].iloc[-1]
             
-            # Param cho News (Rộng hơn bình thường)
+            # Param cho News
             SL_PIPS = 10.0
             TP_PIPS = 20.0
             
@@ -127,32 +121,24 @@ class AutoTrader:
 
             # Execute via Retry
             logger.info(f"🚀 Executing NEWS {signal_type} | @{current_price:.2f} | SL:{sl} TP:{tp}")
-            return self._retry_action(self.client.execute_order, self.symbol, signal_type, self.volume, sl, tp)
+            return await self._retry_action(self.client.execute_order, self.symbol, signal_type, self.volume, sl, tp)
 
         # ===== CASE B: AI REPORT SIGNAL (NORMAL TRACK) =====
-        # Check News Filter (Chỉ áp dụng cho AI Signal)
-        upcoming_news = database.check_upcoming_high_impact_news(minutes=30)
+        upcoming_news = await database.check_upcoming_high_impact_news(minutes=30)
         if upcoming_news:
             logger.warning(f"⛔ DỪNG GIAO DỊCH (AI): Sắp có tin mạnh \"{upcoming_news}\".")
             return "WAIT_NEWS_EVENT"
 
-        recent_news = database.check_recent_high_impact_news(minutes=15)
+        recent_news = await database.check_recent_high_impact_news(minutes=15)
         if recent_news:
              logger.warning(f"⛔ DỪNG GIAO DỊCH (AI): Vừa có tin mạnh \"{recent_news}\".")
              return "WAIT_POST_NEWS"
 
-        # (Phần còn lại giữ nguyên Logic Technical cũ...)
-        
         # Get Market Data
-        df, src_name = get_market_data(self.symbol)
+        df, src_name = await get_market_data(self.symbol)
         if df is None or df.empty: return "FAIL_NO_DATA"
         
         current_price = df['Close'].iloc[-1]
-        
-        # Validate Entry (Smart Entry)
-        # AI signal in DB doesn't retain entry_price explicitly in trade_signals table (it has score/type).
-        # We might need to look up the report details if we want entry price, but `trade_signals` is simplified.
-        # Assuming current price is "good enough" if score is high, or verify with volume.
         
         # Volume Check
         try:
@@ -181,12 +167,11 @@ class AutoTrader:
             return "WAIT"
             
         logger.info(f"🚀 Executing AI {signal_type} (Verified) | Vol: {self.volume}")
-        return self._retry_action(self.client.execute_order, self.symbol, signal_type, self.volume, sl, tp)
+        return await self._retry_action(self.client.execute_order, self.symbol, signal_type, self.volume, sl, tp)
 
-    def process_news_signal(self, news_data: dict):
+    async def process_news_signal(self, news_data: dict):
         """
-        Xử lý phản ứng với tin tức (Breaking News / Calendar)
-        Input: {'score': 0-10, 'trend': 'BULLISH', ...}
+        Xử lý phản ứng với tin tức (Async)
         """
         score = news_data.get('score', 0)
         trend = news_data.get('trend', 'NEUTRAL').upper()
@@ -207,41 +192,33 @@ class AutoTrader:
 
         # ===== STEP 1: SAVE SIGNAL TO DB =====
         try:
-            database.save_trade_signal(self.symbol, signal_direction, "NEWS", float(score))
+            await database.save_trade_signal(self.symbol, signal_direction, "NEWS", float(score))
             logger.info(f"   💾 Saved Signal: {signal_direction} (Score {score})")
         except Exception as e:
             logger.error(f"   ❌ DB Save Error: {e}")
 
-        # ===== STEP 2: DEFENSIVE (Close All OLD Positions if High Impact) =====
-        # Nếu Score >= 8 (Rất mạnh) -> Đóng hết lệnh cũ để tránh biến động ngược
-        # Hoặc nếu phát hiện lệnh ngược chiều (nhưng ở đây Close All cho an toàn theo yêu cầu)
+        # ===== STEP 2: DEFENSIVE =====
         is_safe = True
         if score >= 8:
-            is_safe = self.close_all_positions(self.symbol)
+            is_safe = await self.close_all_positions(self.symbol)
             if not is_safe:
                 logger.critical("⛔ CRITICAL: FAILED TO CLOSE POSITIONS! ABORTING ENTRY!")
-                return # STOP HERE
+                return 
 
         # ===== STEP 3: OFFENSIVE (Sniper Entry) =====
         if score >= 8:
             logger.info(f"⚔️ [OFFENSIVE] High Impact News detected (Score {score}). Preparing Sniper Entry...")
             
             # Get Current Price
-            df, _ = get_market_data(self.symbol)
+            df, _ = await get_market_data(self.symbol)
             if df is None or df.empty:
                 logger.error("   -> Failed to get price for Sniper Entry.")
                 return
 
             current_price = df['Close'].iloc[-1]
             
-            # Sniper Params: Wide SL/TP for volatility
-            # Example: SL 10 pips, TP 20 pips (Gold)
-            # 1 pip Gold = 0.1? No, 1.0 usually $1 movement.
-            # Let's say SL $10, TP $20 movement.
-            
             sl = 0.0
             tp = 0.0
-            
             SL_DIST = 10.0
             TP_DIST = 20.0
             
@@ -254,8 +231,7 @@ class AutoTrader:
                 
             logger.info(f"🚀 SNIPER EXECUTION: {signal_direction} @ {current_price:.2f} (SL: {sl}, TP: {tp})")
             
-            # Sử dụng Retry Action cho lệnh quan trọng
-            response = self._retry_action(
+            response = await self._retry_action(
                 self.client.execute_order, 
                 self.symbol, signal_direction, self.volume, sl, tp
             )

@@ -1,14 +1,25 @@
 # telegram_bot.py
 import os
 import asyncio
-from telegram import Bot, InputMediaPhoto
+from telegram import Bot
 from typing import List, Optional
-from app.core import config # Updated import
+from app.core import config 
 
 # Load biến môi trường từ config
 TELEGRAM_TOKEN = config.TELEGRAM_TOKEN
 TELEGRAM_CHAT_ID = config.TELEGRAM_CHAT_ID
 logger = config.logger
+
+# Global Bot Instance (Lazy load)
+_bot_instance = None
+
+def get_bot_instance() -> Optional[Bot]:
+    global _bot_instance
+    if not TELEGRAM_TOKEN:
+        return None
+    if _bot_instance is None:
+        _bot_instance = Bot(token=TELEGRAM_TOKEN)
+    return _bot_instance
 
 async def send_report_to_telegram(report_content: str, image_paths: List[str]) -> None:
     """
@@ -21,8 +32,7 @@ async def send_report_to_telegram(report_content: str, image_paths: List[str]) -
     logger.info("🚀 Đang gửi báo cáo lên Telegram...")
     
     try:
-        bot = Bot(token=TELEGRAM_TOKEN)
-        media_group = []
+        bot = get_bot_instance()
         
         # 1. Xử lý ảnh (Chấp nhận cả Local File và URL)
         valid_images = []
@@ -38,7 +48,7 @@ async def send_report_to_telegram(report_content: str, image_paths: List[str]) -
             await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=report_content, parse_mode='HTML')
         else:
             # 2. Gửi ảnh đầu tiên kèm caption (text phân tích)
-            # Telegram caption max 1024 ký tự, nếu dài hơn sẽ gửi riêng
+            # Telegram caption max 1024 ký tự
             caption_text = report_content[:1024] if len(report_content) <= 1024 else report_content[:1020] + "..."
             
             first_img = valid_images[0]
@@ -63,20 +73,29 @@ async def send_report_to_telegram(report_content: str, image_paths: List[str]) -
             # Nếu text quá dài, gửi phần còn lại
             if len(report_content) > 1024:
                 remaining_text = report_content[1020:]
-                await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=remaining_text, parse_mode='HTML')
+                # Chia nhỏ nếu vẫn quá dài (Telegram limit 4096 cho message)
+                chunk_size = 4000
+                for i in range(0, len(remaining_text), chunk_size):
+                    await bot.send_message(
+                        chat_id=TELEGRAM_CHAT_ID, 
+                        text=remaining_text[i:i+chunk_size], 
+                        parse_mode='HTML'
+                    )
 
         logger.info("✅ Đã gửi thành công lên Telegram!")
 
     except Exception as e:
         logger.error(f"❌ Lỗi gửi Telegram: {e}")
 
-# Hàm wrapper để gọi từ code đồng bộ (sync) bên ngoài
-def run_sending(content: str, images: List[str]) -> None:
+async def send_message_async(content: str) -> None:
+    """
+    Hàm async đơn giản để gửi text message.
+    """
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+        
     try:
-        asyncio.run(send_report_to_telegram(content, images))
+        bot = get_bot_instance()
+        await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=content, parse_mode='HTML')
     except Exception as e:
-        logger.error(f"Lỗi khởi chạy Asyncio: {e}")
-
-def send_message(content: str) -> None:
-    """Simple wrapper for sending text only"""
-    run_sending(content, [])
+        logger.error(f"❌ Lỗi gửi Telegram Message: {e}")

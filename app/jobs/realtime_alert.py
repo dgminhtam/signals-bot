@@ -1,8 +1,8 @@
 """
-Worker riêng biệt cho Real-time Alert.
-Chạy mỗi 15 phút để săn tin nóng (Breaking News).
+Worker riêng biệt cho Real-time Alert (Async).
 """
 import datetime
+import asyncio
 from app.core import database
 from app.services import ai_engine
 from app.services import telegram_bot
@@ -12,15 +12,16 @@ from app.core import config
 
 logger = config.logger
 
-def main():
+async def main():
     try:
         logger.debug("⚡ [ALERT WORKER] BẮT ĐẦU QUÉT TIN NÓNG...")
         
-        # 1. Trigger Crawler
-        news_crawler.get_gold_news(lookback_minutes=5, fast_mode=True)
+        # 1. Trigger Crawler (Async)
+        # Note: get_gold_news should be awaited
+        await news_crawler.get_gold_news(lookback_minutes=5, fast_mode=True)
         
         # 2. Lấy tin trong 5 phút qua
-        recent_articles = database.get_unalerted_news(lookback_minutes=5)
+        recent_articles = await database.get_unalerted_news(lookback_minutes=5)
 
         if not recent_articles:
             logger.debug("   -> Không có tin mới chưa xử lý trong 5 phút qua.")
@@ -44,8 +45,8 @@ def main():
             if not any(k in title_lower for k in urgent_keywords):
                 continue
 
-            # Check Breaking AI
-            analysis = ai_engine.check_breaking_news(article['content'])
+            # Check Breaking AI (Async)
+            analysis = await ai_engine.check_breaking_news(article['content'])
             if not analysis: continue
                 
             is_breaking = analysis.get('is_breaking', False)
@@ -55,8 +56,8 @@ def main():
             impact_vi = analysis.get('impact_vi', '')
             
             # Keyword Override
-            urgent_keywords = ["fed rate", "war", "nuclear", "tăng lãi suất", "chiến tranh"]
-            if any(k in article['title'].lower() for k in urgent_keywords):
+            urgent_keywords_vi = ["fed rate", "war", "nuclear", "tăng lãi suất", "chiến tranh"]
+            if any(k in article['title'].lower() for k in urgent_keywords_vi):
                 is_breaking = True
                 if score < 5: score = 8 
 
@@ -83,11 +84,11 @@ def main():
 """
                 image_url = article.get("image_url")
                 if image_url:
-                     telegram_bot.run_sending(message, [image_url])
+                     await telegram_bot.send_report_to_telegram(message, [image_url])
                 else:
-                     telegram_bot.send_message(message)
+                     await telegram_bot.send_message_async(message)
                 
-                # --- WORDPRESS ---
+                # --- WORDPRESS (Sync wrapped in Thread) ---
                 try:
                     from app.services.wordpress_service import wordpress_service
                     if wordpress_service.enabled:
@@ -97,33 +98,19 @@ def main():
                         <p>💥 <strong>Phân tích:</strong> {impact_vi}</p>
                         <p><strong>{warn_text}</strong></p>
                         """
-                        wordpress_service.create_liveblog_entry(title=wp_title, content=wp_content, image_url=image_url)
+                        # Assuming create_liveblog_entry is sync
+                        await asyncio.to_thread(
+                            wordpress_service.create_liveblog_entry, 
+                            title=wp_title, content=wp_content, image_url=image_url
+                        )
                 except Exception: pass
                 
                 # --- TRIGGER AUTO TRADER (ACTIONABLE) ---
                 try:
-                    if score_val >= 5: # Chỉ phản ứng với tin mạnh > 5
+                    if score_val >= 5: 
                         logger.info("   🤖 Activating Trader response...")
                         trader = AutoTrader()
                         
-                        # Mapping Data
-                        # score: 0-10 scale usually. 
-                        # Trend? Need to imply from score or keywords? 
-                        # Assuming ai_engine.check_breaking_news doesn't return Explicit Trend "BULLISH/BEARISH" clearly,
-                        # but usually impact_analysis implies it. 
-                        # For now, simplistic approach: check keywords in impact_vi or title?
-                        # Actually 'ai_engine.check_breaking_news' schema might need checking.
-                        # Assuming for now we rely on score strength and we might need to Extract Trend better.
-                        # Wait, user request said: "Input: news_data chứa score (0-10) và trend (BULLISH/BEARISH)."
-                        # My ai_engine mock might not return 'trend' key in check_breaking_news.
-                        # I will check `ai_engine.py`? No time. 
-                        # I will infer trend if missing, or default to Neutral (Defensive only).
-                        
-                        # Let's try to parse trend from 'impact_vi' text if possible or just pass "NEUTRAL"
-                        # If "NEUTRAL", Trader will only do Defensive checks (SAFE) but won't Sniper.
-                        # To Sniper, we need Direction.
-                        
-                        # Hack: Search for "tăng" (Bullish) or "giảm" (Bearish) in impact_vi
                         trend_est = "NEUTRAL"
                         impact_lower = impact_vi.lower()
                         if "tăng" in impact_lower or "hỗ trợ" in impact_lower or "bullish" in impact_lower:
@@ -134,16 +121,16 @@ def main():
                         news_data = {
                             'title': headline_vi,
                             'score': score_val,
-                            'trend': trend_est, # Estimated
-                            'source': 'NEWS',   # Add Source
-                            'symbol': 'XAUUSD'  # Add Symbol
+                            'trend': trend_est, 
+                            'source': 'NEWS', 
+                            'symbol': 'XAUUSD'
                         }
-                        trader.process_news_signal(news_data)
+                        await trader.process_news_signal(news_data)
                 except Exception as e:
                     logger.error(f"❌ Trader Trigger Failed: {e}")
 
                 # Mark Alerted
-                database.mark_article_alerted(article['id'])
+                await database.mark_article_alerted(article['id'])
                 
             else:
                 pass
@@ -154,4 +141,4 @@ def main():
         logger.error(f"❌ Lỗi Alert Worker: {e}", exc_info=True)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

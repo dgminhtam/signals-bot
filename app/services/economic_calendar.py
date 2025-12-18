@@ -2,10 +2,11 @@ import time
 import html
 import json
 import os
+import asyncio
 from typing import List, Dict, Optional
 import logging
 from datetime import datetime, timedelta
-from curl_cffi import requests
+from curl_cffi.requests import AsyncSession
 from bs4 import BeautifulSoup
 from dateutil import parser as date_parser
 from dateutil import tz
@@ -32,72 +33,73 @@ class EconomicCalendarService:
         if not os.path.exists("data"):
             os.makedirs("data")
 
-    def _fetch_url(self, url: str):
+    async def _fetch_url(self, url: str):
         """
-        Helper: Browser Rotation & Retry Mechanism
-        Mục tiêu: Fix lỗi 403 Forbidden do cloudflare/firewall chặn IP Datacenter.
+        Helper: Browser Rotation & Retry Mechanism (Async)
         """
         browsers = ["chrome120", "safari15_5", "chrome110", "edge101", "safari_ios_16_5"]
         
-        for browser in browsers:
-            try:
-                logger.info(f"🌐 Fetching {url} with impersonate='{browser}'...")
-                response = requests.get(url, headers=self.headers, impersonate=browser, timeout=30)
-                
-                if response.status_code == 200:
-                    return response
-                elif response.status_code == 403:
-                    logger.warning(f"⚠️ Blocked 403 ({browser}). Retrying in 3s...")
-                    time.sleep(3)
-                else:
-                    logger.warning(f"⚠️ Failed {response.status_code} ({browser}). Retrying...")
-                    time.sleep(3)
+        async with AsyncSession(timeout=30) as session:
+            for browser in browsers:
+                try:
+                    response = await session.get(url, headers=self.headers, impersonate=browser)
+                    
+                    if response.status_code == 200:
+                        return response
+                    elif response.status_code == 403:
+                        logger.warning(f"⚠️ Blocked 403 ({browser}). Retrying in 3s...")
+                        await asyncio.sleep(3)
+                    else:
+                        logger.warning(f"⚠️ Failed {response.status_code} ({browser}). Retrying...")
+                        await asyncio.sleep(3)
 
-            except Exception as e:
-                logger.warning(f"❌ Connection Error ({browser}): {e}")
-                time.sleep(3)
+                except Exception as e:
+                    logger.warning(f"❌ Connection Error ({browser}): {e}")
+                    await asyncio.sleep(3)
         
         logger.error(f"❌ All browsers failed to fetch URL: {url}")
         return None
 
-    def fetch_schedule_json(self) -> List[Dict]:
+    async def fetch_schedule_json(self) -> List[Dict]:
         """
-        Lấy lịch sự kiện từ JSON API. 
-        Mục tiêu: Tạo khung (Skeleton) dữ liệu với giờ UTC chuẩn.
+        Lấy lịch sự kiện từ JSON API (Async). 
         """
         try:
-            # Check Cache
+            # Check Cache (IO Sync is acceptable for reading small JSON file)
+            loop = asyncio.get_running_loop()
             if os.path.exists(CACHE_FILE):
                 mod_time = os.path.getmtime(CACHE_FILE)
                 if time.time() - mod_time < CACHE_TTL:
                     with open(CACHE_FILE, 'r') as f:
-                        return json.load(f)
+                        return await loop.run_in_executor(None, json.load, f)
             
             logger.info(f"🌐 Fetching Schedule JSON: {SCHEDULE_JSON_URL}")
             # USE ROTATION
-            response = self._fetch_url(SCHEDULE_JSON_URL)
+            response = await self._fetch_url(SCHEDULE_JSON_URL)
             
             if response and response.status_code == 200:
                 data = response.json()
-                with open(CACHE_FILE, 'w') as f:
-                    json.dump(data, f)
+                # Write Cache Async
+                await loop.run_in_executor(None, self._write_cache, data)
                 return data
             return []
         except Exception as e:
             logger.error(f"❌ Error fetching schedule JSON: {e}")
             return []
 
-    def sync_schedule_to_db(self):
+    def _write_cache(self, data):
+        with open(CACHE_FILE, 'w') as f:
+            json.dump(data, f)
+
+    async def sync_schedule_to_db(self):
         """
-        Đồng bộ từ JSON vào DB.
+        Đồng bộ từ JSON vào DB (Async).
         """
-        events = self.fetch_schedule_json()
+        events = await self.fetch_schedule_json()
         if not events: return
 
         count = 0
-        with database.get_db_connection() as conn:
-            c = conn.cursor()
-            
+        async with database.get_db_connection() as conn:
             for item in events:
                 try:
                     title = item.get('title', 'Unknown')
@@ -122,21 +124,20 @@ class EconomicCalendarService:
                     
                     # 1. Preserve Status
                     existing_status = 'pending'
-                    c.execute('''
+                    async with conn.execute('''
                         SELECT status FROM economic_events
                         WHERE title = ? 
                         AND currency = ? 
                         AND date(timestamp) BETWEEN date(?, '-1 day') AND date(?, '+1 day')
-                    ''', (title, currency, date_only, date_only))
-                    
-                    rows = c.fetchall()
-                    for r in rows:
-                        if r['status'] in ['pre_notified', 'post_notified']:
-                            existing_status = r['status']
-                            break
+                    ''', (title, currency, date_only, date_only)) as cursor:
+                         rows = await cursor.fetchall()
+                         for r in rows:
+                            if r['status'] in ['pre_notified', 'post_notified']:
+                                existing_status = r['status']
+                                break
 
-                    # 2. Cleanup Duplicates (Fuzzy Delete)
-                    c.execute('''
+                    # 2. Cleanup Duplicates
+                    await conn.execute('''
                         DELETE FROM economic_events 
                         WHERE title = ? 
                         AND currency = ? 
@@ -144,7 +145,7 @@ class EconomicCalendarService:
                     ''', (title, currency, date_only, date_only))
 
                     # 3. Insert New
-                    c.execute('''
+                    await conn.execute('''
                         INSERT INTO economic_events (id, title, currency, impact, timestamp, forecast, previous, actual, status)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''', (
@@ -160,25 +161,23 @@ class EconomicCalendarService:
                     logger.error(f"❌ Lỗi khi import '{item.get('title', 'Unknown')}': {str(e)}")
                     continue
             
-            conn.commit()
-        logger.info(f"✅ Synced {count} High/Medium events to DB.")
+            await conn.commit()
+        logger.info(f"✅ Synced {count} High events to DB.")
 
-    def fetch_realtime_results_html(self):
+    async def fetch_realtime_results_html(self):
         """
-        Quét HTML để lấy `Actual` value.
-        QUAN TRỌNG: 
-        - Web hiển thị giờ VN (Do IP VN).
-        - Cần convert về UTC để khớp với DB.
+        Quét HTML để lấy `Actual` value (Async).
         """
         url = self.base_url  # URL default (Weekly view)
         logger.info(f"⚡ Scanning Real-time HTML (Weekly View): {url}")
         
         try:
             # USE ROTATION
-            response = self._fetch_url(url)
+            response = await self._fetch_url(url)
             
             if not response or response.status_code != 200: return
 
+            # Parsing HTML is CPU bound
             soup = BeautifulSoup(response.content, "html.parser")
             table = soup.find("table", class_="calendar__table")
             if not table: return
@@ -187,12 +186,10 @@ class EconomicCalendarService:
             current_date_str = ""
             last_time_str = ""
             
-            with database.get_db_connection() as conn:
-                c = conn.cursor()
-                
+            async with database.get_db_connection() as conn:
                 for row in rows:
                     try:
-                        # 1. Extract Date Header (e.g. "Tue Dec 16")
+                        # 1. Extract Date Header
                         if "calendar__row--new-day" in row.get("class", []):
                             d_tag = row.find("span", class_="date")
                             if d_tag:
@@ -231,7 +228,7 @@ class EconomicCalendarService:
                         date_only_utc = dt_utc.strftime('%Y-%m-%d')
                         
                         # 5. EXACT MATCH UPDATE
-                        c.execute('''
+                        await conn.execute('''
                             UPDATE economic_events 
                             SET actual = ? 
                             WHERE title = ? 
@@ -239,25 +236,22 @@ class EconomicCalendarService:
                             AND date(timestamp) = ? 
                             AND (actual IS NULL OR actual = '')
                         ''', (actual, title, currency, date_only_utc))
+                        conn.total_changes
+                        # Check rowcount if possible, simplified here
                         
-                        if c.rowcount > 0:
-                            logger.info(f"✅ Updated Actual for '{title}' ({currency}): {actual} [UTC Date: {date_only_utc}]")
-                            conn.commit()
-
                     except Exception: continue
+                await conn.commit()
                         
         except Exception as e:
             logger.error(f"❌ Error scanning HTML: {e}")
 
     def parse_datetime_html(self, date_str, time_str):
         """
-        Parse HTML Date/Time string.
-        Logic: 1. Naive -> 2. Assign 'Asia/Ho_Chi_Minh' -> 3. UTC
+        Parse HTML Date/Time string (Sync Helper - Fast).
         """
         try:
             if not date_str or not time_str: return None
             
-            # Clean: "Tue Dec 16" -> "Dec 16"
             parts = date_str.split()
             if len(parts) > 1:
                 clean_date = " ".join(parts[1:])
@@ -288,43 +282,47 @@ class EconomicCalendarService:
             return ts.astimezone(vn_tz).strftime('%H:%M')
         except: return "N/A"
 
-    def process_calendar_alerts(self):
+    async def process_calendar_alerts(self):
+        """
+        Main Flow (Async)
+        """
         try:
             # Sync Schedule
-            self.sync_schedule_to_db()
+            await self.sync_schedule_to_db()
             
             # Update Actuals
-            self.fetch_realtime_results_html()
+            await self.fetch_realtime_results_html()
             
             now_utc = datetime.now(tz.UTC)
             
             # Pre Alerts
-            pre_alerts = database.get_pending_pre_alerts(60)
+            pre_alerts = await database.get_pending_pre_alerts(60)
             for event in pre_alerts:
                 ts = date_parser.parse(event['timestamp']) # UTC
                 if ts.tzinfo is None: ts = ts.replace(tzinfo=tz.UTC)
                 diff = (ts - now_utc).total_seconds() / 60
                 
                 if diff < -10:
-                    database.update_event_status(event['id'], 'pre_notified')
+                    await database.update_event_status(event['id'], 'pre_notified')
                     continue
                 
                 time_str = self._format_vn_time(event['timestamp'])
-                self.send_pre_alert(event, int(diff), time_str)
-                database.update_event_status(event['id'], 'pre_notified')
+                await self.send_pre_alert(event, int(diff), time_str)
+                await database.update_event_status(event['id'], 'pre_notified')
                 
             # Post Alerts
-            post_alerts = database.get_pending_post_alerts()
+            post_alerts = await database.get_pending_post_alerts()
             for event in post_alerts:
                 time_str = self._format_vn_time(event['timestamp'])
-                self.send_post_alert(event, time_str)
-                database.update_event_status(event['id'], 'post_notified')
+                await self.send_post_alert(event, time_str)
+                await database.update_event_status(event['id'], 'post_notified')
 
         except Exception as e:
             logger.error(f"Error in process_calendar_alerts: {e}")
 
-    def send_pre_alert(self, event, minutes_left, time_str):
-        analysis = ai_engine.analyze_pre_economic_data(event)
+    async def send_pre_alert(self, event, minutes_left, time_str):
+        # AI Engine Async Call
+        analysis = await ai_engine.analyze_pre_economic_data(event)
         
         forecast = event.get('forecast', 'N/A')
         previous = event.get('previous', 'N/A')
@@ -345,10 +343,10 @@ class EconomicCalendarService:
             f"📉 <b>Kịch bản giảm:</b> {low}\n\n"
             f"#PreNews #{event['currency']}"
         )
-        telegram_bot.send_message(msg)
+        await telegram_bot.send_message_async(msg)
         
-    def send_post_alert(self, event, time_str):
-        analysis = ai_engine.analyze_economic_data(event)
+    async def send_post_alert(self, event, time_str):
+        analysis = await ai_engine.analyze_economic_data(event)
         
         actual = event.get('actual', 'N/A')
         forecast = event.get('forecast', 'N/A')
@@ -372,7 +370,7 @@ class EconomicCalendarService:
                 f"#EconomicResult #{event['currency']}"
             )
             
-            # --- TRIGGER AUTO TRADER ---
+            # --- TRIGGER AUTO TRADER (Async) ---
             try:
                 if abs(sentiment_score) >= 5:
                     logger.info(f"🤖 Activating AutoTrader on Economic Result (Score: {sentiment_score})...")
@@ -386,7 +384,7 @@ class EconomicCalendarService:
                         'score': score_norm,
                         'trend': trend
                     }
-                    trader.process_news_signal(news_data)
+                    await trader.process_news_signal(news_data)
             except Exception as e:
                 logger.error(f"❌ Trader Trigger Error: {e}")
                 
@@ -400,4 +398,4 @@ class EconomicCalendarService:
                 f"🔹 Kỳ trước: {previous}\n"
                 f"#EconomicResult"
             )
-        telegram_bot.send_message(msg)
+        await telegram_bot.send_message_async(msg)

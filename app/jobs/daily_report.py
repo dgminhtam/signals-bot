@@ -1,6 +1,7 @@
 import json
 import os
 import datetime
+import asyncio
 from typing import Dict, Any, List
 from app.core import database
 from app.services import ai_engine
@@ -100,12 +101,12 @@ def format_telegram_message(data: Dict[str, Any], articles: List[Dict[str, Any]]
     
     return message
 
-def main():
-    logger.info(">>> BẮT ĐẦU QUY TRÌNH TỔNG HỢP (AUTO) <<<")
+async def main():
+    logger.info(">>> BẮT ĐẦU QUY TRÌNH TỔNG HỢP (AUTO - ASYNC) <<<")
 
     try:
         # 1. LẤY TIN
-        articles = database.get_unprocessed_articles()
+        articles = await database.get_unprocessed_articles()
         
         if not articles:
             logger.info("🔍 Thông tin đã được phân tích ở phiên trước, bỏ qua phân tích.")
@@ -115,28 +116,30 @@ def main():
         
         # 2. LẤY DỮ LIỆU THỊ TRƯỜNG (Một lần duy nhất)
         logger.info("📊 ĐANG LẤY DỮ LIỆU THỊ TRƯỜNG...")
-        market_df, source = charter.get_market_data()
+        
+        # Call Async
+        market_df, source = await charter.get_market_data()
         
         if market_df is None or market_df.empty:
             logger.error("❌ Không thể lấy dữ liệu thị trường, quy trình có thể bị ảnh hưởng.")
             technical_data = "Không có dữ liệu kỹ thuật."
         else:
-            # Lấy thông tin kỹ thuật (Price, Support, Resistance)
+            # Lấy thông tin kỹ thuật (CPU bound func but fast)
             technical_data = charter.get_technical_analysis(market_df)
             logger.info(f"   + Technical Info: {technical_data.replace(chr(10), ' | ')}")
 
         # 3. GỌI AI PHÂN TÍCH (trước khi vẽ chart)
         logger.info("🤖 ĐANG GỬI DỮ LIỆU SANG AI...")
         
-        # Context Memory: Lấy báo cáo phiên trước để AI so sánh
-        last_report = database.get_latest_report()
+        # Context Memory
+        last_report = await database.get_latest_report()
         if last_report:
             logger.info(f"   + Tìm thấy Context phiên trước: {last_report.get('trend')} (Score: {last_report.get('sentiment_score')})")
         else:
             logger.info("   + Không tìm thấy báo cáo cũ (Cold Start).")
 
-        # AI Phân tích
-        analysis_result = ai_engine.analyze_market(articles, technical_data, last_report)
+        # AI Phân tích (Async)
+        analysis_result = await ai_engine.analyze_market(articles, technical_data, last_report)
         
         # 4. VẼ BIỂU ĐỒ (Sau khi AI phân tích xong)
         logger.info("🎨 ĐANG VẼ BIỂU ĐỒ...")
@@ -144,7 +147,10 @@ def main():
         if market_df is not None:
              # Fix: Lấy xu hướng từ AI truyền vào chart
             ai_trend_str = analysis_result.get('trend') if analysis_result else None
-            price_chart = charter.draw_price_chart(
+            
+            # RUN IN THREAD for heavy image processing
+            price_chart = await asyncio.to_thread(
+                charter.draw_price_chart,
                 df=market_df, 
                 data_source=source, 
                 ai_trend=ai_trend_str
@@ -159,7 +165,7 @@ def main():
             logger.info("✅ AI PHÂN TÍCH THÀNH CÔNG!")
             
             # Lưu vào DB
-            database.save_report(
+            await database.save_report(
                 content=analysis_result.get('headline', '') + "...", 
                 score=analysis_result.get('sentiment_score', 0),
                 trend=analysis_result.get('trend', 'N/A'),
@@ -169,41 +175,46 @@ def main():
             # Đánh dấu tin đã đọc
             if articles:
                 article_ids = [art['id'] for art in articles]
-                database.mark_articles_processed(article_ids)
+                await database.mark_articles_processed(article_ids)
 
             # 4. GỬI TELEGRAM
             logger.info("🚀 KÍCH HOẠT TELEGRAM BOT...")
             
             final_message = format_telegram_message(analysis_result, articles)
-            telegram_bot.run_sending(final_message, image_list)
+            await telegram_bot.send_report_to_telegram(final_message, image_list)
             
-            # 5. GỬI WORDPRESS LIVEBLOG (Optional - không ảnh hưởng Telegram)
+            # 5. GỬI WORDPRESS LIVEBLOG (Optional)
+            # WordPress Service likely needs to be async or wrapped if it does IO.
+            # Assuming it's still sync requests based on user context.
+            # Wrap in thread for safety.
             try:
                 from app.services.wordpress_service import wordpress_service
                 
                 if wordpress_service.enabled:
                     logger.info("🌐 ĐANG GỬI LÊN WORDPRESS LIVEBLOG...")
                     
-                    # Upload chart image và lấy URL
-                    image_url = None
-                    if price_chart and os.path.exists(price_chart):
-                        media_info = wordpress_service.upload_image(price_chart, f"XAU/USD Chart {datetime.datetime.now().strftime('%Y%m%d_%H%M')}")
-                        if media_info:
-                            # Lấy URL trực tiếp từ response của WordPress
-                            image_url = media_info.get('source_url')
+                    def run_wp():
+                        # Upload chart image và lấy URL
+                        image_url = None
+                        if price_chart and os.path.exists(price_chart):
+                            media_info = wordpress_service.upload_image(price_chart, f"XAU/USD Chart {datetime.datetime.now().strftime('%Y%m%d_%H%M')}")
+                            if media_info:
+                                image_url = media_info.get('source_url')
+                        
+                        # Tạo liveblog entry
+                        entry_title = f"⏰ {datetime.datetime.now().strftime('%H:%M')} - {analysis_result.get('headline', 'Phân tích XAU/USD')}"
+                        
+                        wordpress_service.create_liveblog_entry(
+                            title=entry_title,
+                            content=final_message,
+                            image_url=image_url
+                        )
                     
-                    # Tạo liveblog entry
-                    entry_title = f"⏰ {datetime.datetime.now().strftime('%H:%M')} - {analysis_result.get('headline', 'Phân tích XAU/USD')}"
+                    await asyncio.to_thread(run_wp)
                     
-                    wordpress_service.create_liveblog_entry(
-                        title=entry_title,
-                        content=final_message,
-                        image_url=image_url
-                    )
                 else:
                     logger.info("ℹ️ WordPress chưa được cấu hình, bỏ qua bước post WP.")
             except Exception as wp_error:
-                # Lỗi WordPress KHÔNG được phép làm crash Telegram flow
                 logger.error(f"❌ Lỗi khi post WordPress Liveblog (không ảnh hưởng Telegram): {wp_error}")
             
             logger.info("-" * 50)
@@ -217,4 +228,4 @@ def main():
         logger.critical(f"🔥 LỖI FATAL TRONG MAIN FLOW: {e}", exc_info=True)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

@@ -7,19 +7,23 @@ Script này sẽ:
 - Gửi báo cáo qua Telegram
 """
 
-import schedule
-import time
+import asyncio
 import argparse
 import sys
+import logging
 from datetime import datetime
+
+# APScheduler Imports
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
+
 from app.core import config
 from app.services import news_crawler
 from app.jobs import daily_report
 from app.jobs import realtime_alert
 from app.jobs import economic_worker
-from app.jobs import economic_worker
 from app.services.trader import AutoTrader
-from app.core import config
 
 logger = config.logger
 
@@ -27,8 +31,8 @@ def is_weekday():
     """Kiểm tra có phải ngày làm việc không (Thứ 2-6)"""
     return datetime.now().weekday() < 5  # 0-4 là Thứ 2-6
 
-def job_scan_news(force=False):
-    """Job quét tin từ RSS"""
+async def job_scan_news(force=False):
+    """Job quét tin từ RSS (Async)"""
     # Kiểm tra cuối tuần (nếu không force)
     if not force and not is_weekday():
         logger.info("🏖️ Cuối tuần (Thứ 7/CN) - Thị trường Forex/Gold nghỉ, bot nghỉ!")
@@ -40,16 +44,16 @@ def job_scan_news(force=False):
         logger.info(f"🕐 [{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}] BẮT ĐẦU QUÉT TIN ({mode_str})...")
         logger.info("="*60)
         
-        # Quét tin từ RSS
-        news_crawler.get_gold_news()
+        # Quét tin từ RSS (Await async function)
+        await news_crawler.get_gold_news()
         
         logger.info("✅ Quét tin hoàn tất!")
         
     except Exception as e:
         logger.error(f"❌ Lỗi khi quét tin: {e}", exc_info=True)
 
-def job_analyze_and_send(force=False):
-    """Job phân tích và gửi telegram"""
+async def job_analyze_and_send(force=False):
+    """Job phân tích và gửi telegram (Async)"""
     # Kiểm tra cuối tuần (nếu không force)
     if not force and not is_weekday():
         logger.info("🏖️ Cuối tuần (Thứ 7/CN) - Thị trường Forex/Gold nghỉ, bot nghỉ!")
@@ -61,16 +65,16 @@ def job_analyze_and_send(force=False):
         logger.info(f"📊 [{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}] BẮT ĐẦU PHÂN TÍCH ({mode_str})...")
         logger.info("="*60)
         
-        # Chạy phân tích và gửi telegram
-        daily_report.main()
+        # Chạy phân tích và gửi telegram (Await)
+        await daily_report.main()
         
         logger.info("✅ Phân tích và gửi hoàn tất!")
         
     except Exception as e:
         logger.error(f"❌ Lỗi khi phân tích: {e}", exc_info=True)
 
-def job_auto_trade(force=False):
-    """Job tự động giao dịch (Auto Trader)"""
+async def job_auto_trade(force=False):
+    """Job tự động giao dịch (Auto Trader) (Async)"""
     # AutoTrader cũng chỉ chạy ngày thường
     if not force and not is_weekday():
         logger.info("🏖️ Cuối tuần - AutoTrader nghỉ.")
@@ -82,9 +86,8 @@ def job_auto_trade(force=False):
         logger.info(f"🤖 [{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}] STARING AUTO TRADER ({mode})...")
         
         # Init & Run
-        # Volume mặc định 0.01 (hoặc lấy từ config nếu muốn)
         trader = AutoTrader("XAUUSD")
-        trader.analyze_and_trade()
+        await trader.analyze_and_trade()
         
         logger.info("✅ Auto Trader Job Completed.")
         logger.info("="*60)
@@ -92,9 +95,9 @@ def job_auto_trade(force=False):
     except Exception as e:
         logger.error(f"❌ Lỗi Auto Trader: {e}", exc_info=True)
 
-def run_schedule():
-    """Hàm chạy Scheduler (Auto Mode)"""
-    logger.info("🚀 KHỞI ĐỘNG SCHEDULER (Clean Architecture Version)...")
+async def start_scheduler():
+    """Hàm chạy Scheduler (Auto Mode) với APScheduler"""
+    logger.info("🚀 KHỞI ĐỘNG SCHEDULER (AsyncIO + APScheduler Version)...")
     logger.info("📅 Lịch trình: 3 Khung giờ Chiến lược (Thứ 2-6)")
     logger.info("🏖️ Bot nghỉ: Thứ 7, Chủ Nhật (Thị trường Forex/Gold đóng cửa)")
     logger.info("="*60)
@@ -111,57 +114,97 @@ def run_schedule():
     logger.info("   📊 19:15 - Phân tích và gửi")
     logger.info("="*60)
     
-    # Thiết lập lịch trình
-    schedule.every().day.at("07:00").do(job_scan_news)
-    schedule.every().day.at("07:15").do(job_analyze_and_send)
+    # Khởi tạo Scheduler
+    scheduler = AsyncIOScheduler()
     
-    schedule.every().day.at("13:30").do(job_scan_news)
-    schedule.every().day.at("13:45").do(job_analyze_and_send)
+    # --- SCAN NEWS JOBS (Async) ---
+    scheduler.add_job(job_scan_news, CronTrigger(hour=7, minute=0))
+    scheduler.add_job(job_scan_news, CronTrigger(hour=13, minute=30))
+    scheduler.add_job(job_scan_news, CronTrigger(hour=19, minute=0))
     
-    schedule.every().day.at("19:00").do(job_scan_news)
-    schedule.every().day.at("19:15").do(job_analyze_and_send)
+    # --- ANALYZE JOBS (Async) ---
+    scheduler.add_job(job_analyze_and_send, CronTrigger(hour=7, minute=15))
+    scheduler.add_job(job_analyze_and_send, CronTrigger(hour=13, minute=45))
+    scheduler.add_job(job_analyze_and_send, CronTrigger(hour=19, minute=15))
     
-    # Alert
+    # --- REALTIME ALERT (1 phút) ---
     logger.info("⚡ Thiết lập Real-time Alert: Chạy mỗi 1 phút (HFT Mode)")
-    schedule.every(1).minutes.do(realtime_alert.main)
+    scheduler.add_job(realtime_alert.main, IntervalTrigger(minutes=1))
 
-    # Economic Calendar
+    # --- ECONOMIC CALENDAR (5 phút) ---
     logger.info("📅 Thiết lập Economic Calendar Worker: Chạy mỗi 5 phút")
-    schedule.every(5).minutes.do(economic_worker.main)
+    scheduler.add_job(economic_worker.main, IntervalTrigger(minutes=5))
     
-    # Auto Trader
+    # --- AUTO TRADER (Each Hour at :02) ---
     logger.info("🤖 Thiết lập Auto Trader: Chạy mỗi giờ (phút 02)")
-    schedule.every().hour.at(":02").do(job_auto_trade)
+    scheduler.add_job(job_auto_trade, CronTrigger(minute='2'))
     
     logger.info(f"✅ Đã thiết lập jobs.")
-    logger.info("♾️  Bắt đầu vòng lặp tự động...")
+    logger.info("♾️  Bắt đầu vòng lặp sự kiện (Event Loop)...")
+    
+    from app.core import database
+    await database.init_db()
+    
+    scheduler.start()
     
     try:
+        # Keep alive forever
         while True:
-            schedule.run_pending()
-            time.sleep(60)
+            await asyncio.sleep(1)
     except KeyboardInterrupt:
         logger.info("\n⏹️  Dừng scheduler bởi người dùng")
+        scheduler.shutdown()
     except Exception as e:
         logger.critical(f"🔥 LỖI NGHIÊM TRỌNG: {e}", exc_info=True)
+        scheduler.shutdown()
 
-def run_manual():
-    """Chạy full flow thủ công (Scan -> Report -> Alert Test)"""
-    logger.info("�️ [MANUAL MODE] Kích hoạt chạy thủ công toàn bộ quy trình...")
+async def run_manual_async(report_only=False, alert_only=False, trade_only=False, crawler_only=False, calendar_only=False):
+    """Chạy full flow thủ công (Async Wrapper)"""
     
+    from app.core import database
+    await database.init_db()
+    
+    if report_only:
+        logger.info("🛠️ Running Manual Report...")
+        await job_scan_news(force=True)
+        await job_analyze_and_send(force=True)
+        return
+
+    if alert_only:
+        logger.info("⚡ Running Manual Alert...")
+        await realtime_alert.main()
+        return
+
+    if trade_only:
+        logger.info("🤖 Running Manual Trader...")
+        await job_auto_trade(force=True)
+        return
+        
+    if crawler_only:
+         logger.info("📰 Running Manual Crawler...")
+         await job_scan_news(force=True)
+         return
+         
+    if calendar_only:
+         logger.info("📅 Running Manual Economic Calendar...")
+         await economic_worker.main()
+         return
+
+    # Default: Full Check
+    logger.info("🛠️ [MANUAL MODE] Kích hoạt chạy thủ công toàn bộ quy trình...")
     logger.info("\n1️⃣ STEP 1: SCAN NEWS (Force Run)")
-    job_scan_news(force=True)
+    await job_scan_news(force=True)
     
     logger.info("\n2️⃣ STEP 2: DAILY REPORT (Force Run)")
-    job_analyze_and_send(force=True)
+    await job_analyze_and_send(force=True)
     
     logger.info("\n3️⃣ STEP 3: REAL-TIME ALERT (Check once)")
-    realtime_alert.main()
+    await realtime_alert.main()
     
     logger.info("\n✅ [MANUAL MODE] Đã hoàn tất mọi tác vụ.")
 
 def main():
-    parser = argparse.ArgumentParser(description="Signals Bot Manager")
+    parser = argparse.ArgumentParser(description="Signals Bot Manager (AsyncIO)")
     parser.add_argument("--manual", action="store_true", help="Chạy thủ công ngay lập tức (Report + Alert)")
     parser.add_argument("--report", action="store_true", help="Chạy thủ công chỉ phần Report")
     parser.add_argument("--alert", action="store_true", help="Chạy thủ công chỉ phần Alert")
@@ -171,27 +214,26 @@ def main():
     
     args = parser.parse_args()
 
-    if args.manual:
-        run_manual()
-    elif args.report:
-        logger.info("🛠️ Running Manual Report...")
-        job_scan_news(force=True)
-        job_analyze_and_send(force=True)
-    elif args.alert:
-        logger.info("⚡ Running Manual Alert...")
-        realtime_alert.main()
-    elif args.trade:
-        logger.info("🤖 Running Manual Trader...")
-        job_auto_trade(force=True)
-    elif args.crawler:
-        logger.info("📰 Running Manual Crawler...")
-        job_scan_news(force=True)
-    elif args.calendar:
-        logger.info("📅 Running Manual Economic Calendar...")
-        economic_worker.main()
-    else:
-        # Mặc định chạy Scheduler
-        run_schedule()
+    try:
+        if args.manual:
+            asyncio.run(run_manual_async())
+        elif args.report:
+            asyncio.run(run_manual_async(report_only=True))
+        elif args.alert:
+            asyncio.run(run_manual_async(alert_only=True))
+        elif args.trade:
+            asyncio.run(run_manual_async(trade_only=True))
+        elif args.crawler:
+             asyncio.run(run_manual_async(crawler_only=True))
+        elif args.calendar:
+             asyncio.run(run_manual_async(calendar_only=True))
+        else:
+            # Chạy Scheduler (Async Mode)
+            asyncio.run(start_scheduler())
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        logger.critical(f"FATAL ERROR: {e}", exc_info=True)
 
 if __name__ == "__main__":
     main()

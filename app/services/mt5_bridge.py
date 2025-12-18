@@ -1,4 +1,4 @@
-import socket
+import asyncio
 import pandas as pd
 import io
 import time
@@ -8,7 +8,8 @@ class MT5DataClient:
     def __init__(self, host='127.0.0.1', port=1122):
         self.host = host
         self.port = port
-        self.sock = None
+        self.reader = None
+        self.writer = None
         
         # Mapping timeframe
         self.TIMEFRAMES = {
@@ -16,56 +17,58 @@ class MT5DataClient:
             'H1': 16385, 'H4': 16388, 'D1': 16408
         }
 
-    def connect(self) -> bool:
+    async def connect(self) -> bool:
         """
-        Mở kết nối Socket đến MT5
+        Mở kết nối Socket đến MT5 (Async)
         """
         try:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sock.settimeout(5) # Timeout 5 giây
-            self.sock.connect((self.host, self.port))
+            self.reader, self.writer = await asyncio.wait_for(
+                asyncio.open_connection(self.host, self.port),
+                timeout=5
+            )
             return True
         except Exception as e:
             print(f"❌ Exception connecting to MT5 {self.host}:{self.port} -> {e}") 
             return False
 
-    def disconnect(self):
+    async def disconnect(self):
         """
-        Đóng kết nối
+        Đóng kết nối (Async)
         """
-        if self.sock:
+        if self.writer:
             try:
-                self.sock.close()
-            except:
+                self.writer.close()
+                await self.writer.wait_closed()
+            except Exception:
                 pass
-            self.sock = None
+            self.writer = None
+            self.reader = None
 
-    def get_historical_data(self, symbol="XAUUSD", timeframe="H1", count=120):
+    async def get_historical_data(self, symbol="XAUUSD", timeframe="H1", count=120):
         """
-        Gửi lệnh lấy dữ liệu nến
+        Gửi lệnh lấy dữ liệu nến (Async)
         """
-        if not self.sock:
-            if not self.connect():
+        if not self.writer:
+            if not await self.connect():
                 return None
 
         try:
-            # Lấy mã timeframe
-            tf_code = self.TIMEFRAMES.get(timeframe, 16385)
-            
             # Gửi lệnh theo protocol: SYMBOL|TIMEFRAME|COUNT
             command = f"{symbol}|{timeframe}|{count}"
-            self.sock.send(command.encode())
+            self.writer.write(command.encode())
+            await self.writer.drain()
             
             # Nhận dữ liệu (Buffer)
             data = b""
             while True:
                 try:
-                    chunk = self.sock.recv(4096)
+                    # Timeout cho mỗi lần đọc chunk
+                    chunk = await asyncio.wait_for(self.reader.read(4096), timeout=5)
                     if not chunk: break
                     data += chunk
                     # Nếu buffer nhỏ hơn 4096 nghĩa là đã hết tin (với EA simple)
                     if len(chunk) < 4096: break 
-                except socket.timeout:
+                except asyncio.TimeoutError:
                     break
             
             response_str = data.decode('utf-8', errors='ignore').strip()
@@ -73,6 +76,8 @@ class MT5DataClient:
             if not response_str or response_str.startswith("ERROR"):
                 return None
 
+            # Parse CSV off-thread (CPU bound) nếu quá nặng? 
+            # Hiện tại vẫn parse sync vì pandas read_csv nhanh với data nhỏ.
             # Parse CSV: Time,Open,High,Low,Close,Volume
             csv_str = response_str.replace(";", "\n")
             
@@ -83,7 +88,6 @@ class MT5DataClient:
             df['Time'] = pd.to_datetime(df['Time'], unit='s')
             df.set_index('Time', inplace=True)
             
-            # Convert múi giờ
             # Convert múi giờ
             if df.index.tz is None:
                 df.index = df.index.tz_localize('UTC')
@@ -98,67 +102,66 @@ class MT5DataClient:
             print(f"❌ Lỗi lấy data: {e}")
             return None
 
-    def _send_simple_command(self, command: str) -> str:
+    async def _send_simple_command(self, command: str) -> str:
         """
-        Gửi lệnh và nhận phản hồi ngắn (Single packet)
-        Có cơ chế Retry nếu mất kết nối (WinError 10053, etc.)
+        Gửi lệnh và nhận phản hồi ngắn (Async)
+        Có cơ chế Retry nếu mất kết nối
         """
         max_retries = 3
         last_error = None
         
         for attempt in range(max_retries):
             # Ensure connection
-            if not self.sock:
-                if not self.connect():
-                    # If connect fails, wait and retry
-                    time.sleep(1)
+            if not self.writer:
+                if not await self.connect():
+                    await asyncio.sleep(1)
                     continue
             
             try:
-                self.sock.send(command.encode())
+                self.writer.write(command.encode())
+                await self.writer.drain()
                 
-                # Wait for response
-                chunk = self.sock.recv(4096)
+                # Wait for response with timeout
+                chunk = await asyncio.wait_for(self.reader.read(4096), timeout=5)
+                
                 if not chunk:
-                    # Connection closed by peer normally but unexpectedly for us
+                    # Connection closed by peer
                     raise ConnectionResetError("Empty response, connection closed by peer")
                     
                 response = chunk.decode('utf-8').strip()
                 return response
                 
-            except (socket.error, OSError) as e:
+            except (ConnectionError, OSError, asyncio.TimeoutError) as e:
                 last_error = e
                 print(f"⚠️ Socket error ({e}). Reconnecting ({attempt+1}/{max_retries})...")
-                self.disconnect() # Force reset socket
-                time.sleep(0.5)
+                await self.disconnect()
+                await asyncio.sleep(0.5)
             except Exception as e:
                 print(f"❌ Unexpected error sending command: {e}")
-                self.disconnect()
+                await self.disconnect()
                 return f"FAIL|EXCEPTION|{e}"
                 
         return f"FAIL|CONNECTION_ERROR|{last_error}"
 
-    def execute_order(self, symbol: str, order_type: str, volume: float, sl: float, tp: float) -> str:
+    async def execute_order(self, symbol: str, order_type: str, volume: float, sl: float, tp: float) -> str:
         """
-        Gửi lệnh giao dịch: ORDER|SYMBOL|TYPE|VOL|SL|TP
+        Gửi lệnh giao dịch: ORDER|SYMBOL|TYPE|VOL|SL|TP (Async)
         """
-        # Format: ORDER|XAUUSD|BUY|0.01|2000.0|2050.0
         command = f"ORDER|{symbol}|{order_type}|{volume}|{sl}|{tp}"
-        return self._send_simple_command(command)
+        return await self._send_simple_command(command)
 
-    def get_open_positions(self, symbol: str = "ALL") -> List[Dict]:
+    async def get_open_positions(self, symbol: str = "ALL") -> List[Dict]:
         """
-        Lấy danh sách lệnh đang mở.
-        Trả về: List of Dictionaries [{'ticket': 123, 'type': 'BUY', 'volume': 0.1, 'profit': 10.5}]
+        Lấy danh sách lệnh đang mở (Async).
         """
         command = f"CHECK|{symbol}"
-        response = self._send_simple_command(command)
+        response = await self._send_simple_command(command)
         
         if not response or response == "EMPTY" or response.startswith("FAIL") or response.startswith("ERROR"):
             return []
         
         try:
-            # Parse response: "123456,0,0.01,5.5;123457,1,0.02,-1.2;"
+            # Parse logic kept sync as it is fast string manipulation
             positions = []
             items = response.split(";")
             
@@ -179,9 +182,9 @@ class MT5DataClient:
             print(f"❌ Lỗi parse positions: {e}")
             return []
 
-    def close_order(self, ticket: int) -> str:
+    async def close_order(self, ticket: int) -> str:
         """
-        Đóng lệnh theo Ticket: CLOSE|TICKET
+        Đóng lệnh theo Ticket: CLOSE|TICKET (Async)
         """
         command = f"CLOSE|{ticket}"
-        return self._send_simple_command(command)
+        return await self._send_simple_command(command)
