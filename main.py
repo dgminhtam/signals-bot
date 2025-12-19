@@ -131,9 +131,9 @@ async def start_scheduler():
     logger.info("⚡ Thiết lập Real-time Alert: Chạy mỗi 1 phút (HFT Mode)")
     scheduler.add_job(realtime_alert.main, IntervalTrigger(minutes=1), max_instances=1, coalesce=True)
 
-    # --- ECONOMIC CALENDAR (5 phút) ---
-    logger.info("📅 Thiết lập Economic Calendar Worker: Chạy mỗi 5 phút")
-    scheduler.add_job(economic_worker.main, IntervalTrigger(minutes=5), max_instances=1, coalesce=True)
+    # --- ECONOMIC CALENDAR (1 phút) ---
+    logger.info("📅 Thiết lập Economic Calendar Worker: Chạy mỗi 1 phút")
+    scheduler.add_job(economic_worker.main, IntervalTrigger(minutes=1), max_instances=1, coalesce=True)
     
     # --- AUTO TRADER (Each Hour at :02) ---
     logger.info("🤖 Thiết lập Auto Trader: Chạy mỗi giờ (phút 02)")

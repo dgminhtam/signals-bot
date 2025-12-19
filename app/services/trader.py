@@ -1,6 +1,7 @@
 import logging
 import asyncio
 import time
+from typing import List
 from datetime import datetime, timedelta
 from app.services.charter import get_market_data
 from app.services.mt5_bridge import MT5DataClient
@@ -237,3 +238,87 @@ class AutoTrader:
             
         else:
             logger.info(f"   -> Score {score} < 8. No automated entry.")
+
+    async def place_straddle_orders(self, distance_pips: float = 20.0, sl_pips: float = 10.0, tp_pips: float = 30.0) -> List[str]:
+        """
+        Đặt 2 lệnh chờ (Buy Stop / Sell Stop) cách giá hiện tại một khoảng distance_pips.
+        Strategy: News Straddle / Trap Trading.
+        """
+        logger.info(f"🕸️ Preparing STRADDLE Strategy via MT5 (Dist: {distance_pips} pips)...")
+        
+        # 1. Get Current Market Price
+        df, _ = await get_market_data(self.symbol)
+        if df is None or df.empty:
+            logger.error("❌ Failed to get market data for Straddle.")
+            return []
+            
+        current_price = df['Close'].iloc[-1]
+        
+        # Convert Pips to Price (Assuming XAUUSD 0.1 pip or Standard 0.0001)
+        # TODO: Dynamic Pip Value based on Symbol digits. For now XAUUSD ~ 0.1 per pip? 
+        # Actually standard for XAUUSD is 0.01 or 0.1 depending on broker. 
+        # Often 1 pip = 0.1 USD. Let's assume input pips are standard pips.
+        # If symbol is XAUUSD, usually 2 digits -> 0.1 is 1 pip? Or 0.01?
+        # Let's generalize: 1 pip = 10 * Point. If Point=0.01, Pip=0.1.
+        
+        pip_value = 0.1 if "XAU" in self.symbol else 0.0001
+        if "JPY" in self.symbol and "XAU" not in self.symbol: pip_value = 0.01
+        
+        distance_price = distance_pips * pip_value
+        sl_price_dist = sl_pips * pip_value
+        tp_price_dist = tp_pips * pip_value
+        
+        buy_stop_price = current_price + distance_price
+        sell_stop_price = current_price - distance_price
+        
+        # Calculate SL/TP
+        # Buy Stop: SL below entry, TP above
+        buy_sl = buy_stop_price - sl_price_dist
+        buy_tp = buy_stop_price + tp_price_dist
+        
+        # Sell Stop: SL above entry, TP below
+        sell_sl = sell_stop_price + sl_price_dist
+        sell_tp = sell_stop_price - tp_price_dist
+        
+        tickets = []
+        
+        # 2. Place BUY STOP
+        logger.info(f"   -> Placing BUY STOP @ {buy_stop_price:.2f} (SL: {buy_sl:.2f}, TP: {buy_tp:.2f})")
+        res_buy = await self.client.execute_order(
+            self.symbol, "BUY_STOP", self.volume, buy_sl, buy_tp, price=buy_stop_price
+        )
+        if "SUCCESS" in res_buy:
+            ticket = res_buy.split("|")[1]
+            tickets.append(ticket)
+            logger.info(f"     ✅ BUY STOP Placed: #{ticket}")
+        else:
+             logger.error(f"     ❌ BUY STOP Failed: {res_buy}")
+             
+        # 3. Place SELL STOP
+        logger.info(f"   -> Placing SELL STOP @ {sell_stop_price:.2f} (SL: {sell_sl:.2f}, TP: {sell_tp:.2f})")
+        res_sell = await self.client.execute_order(
+            self.symbol, "SELL_STOP", self.volume, sell_sl, sell_tp, price=sell_stop_price
+        )
+        if "SUCCESS" in res_sell:
+             ticket = res_sell.split("|")[1]
+             tickets.append(ticket)
+             logger.info(f"     ✅ SELL STOP Placed: #{ticket}")
+        else:
+             logger.error(f"     ❌ SELL STOP Failed: {res_sell}")
+             
+        return tickets
+
+    async def cleanup_pending_orders(self, tickets: List[str]):
+        """
+        Xóa các lệnh pending chưa khớp theo danh sách ticket.
+        """
+        logger.info(f"🧹 Clearing Pending Orders: {tickets}")
+        for t in tickets:
+            if not t: continue
+            try:
+                ticket_int = int(t)
+                res = await self.client.delete_order(ticket_int)
+                logger.info(f"   -> Delete #{t}: {res}")
+            except Exception as e:
+                logger.error(f"   ❌ Error deleting #{t}: {e}")
+

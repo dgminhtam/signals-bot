@@ -5,7 +5,17 @@ import time
 from typing import List, Dict, Optional
 
 class MT5DataClient:
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
+            cls._instance = super(MT5DataClient, cls).__new__(cls)
+        return cls._instance
+
     def __init__(self, host='127.0.0.1', port=1122):
+        if hasattr(self, '_initialized') and self._initialized:
+            return
+
         self.host = host
         self.port = port
         self.reader = None
@@ -16,6 +26,7 @@ class MT5DataClient:
             'M1': 1, 'M5': 5, 'M15': 15, 'M30': 30,
             'H1': 16385, 'H4': 16388, 'D1': 16408
         }
+        self._initialized = True
 
     async def connect(self) -> bool:
         """
@@ -143,11 +154,12 @@ class MT5DataClient:
                 
         return f"FAIL|CONNECTION_ERROR|{last_error}"
 
-    async def execute_order(self, symbol: str, order_type: str, volume: float, sl: float, tp: float) -> str:
+    async def execute_order(self, symbol: str, order_type: str, volume: float, sl: float, tp: float, price: float = 0.0) -> str:
         """
-        Gửi lệnh giao dịch: ORDER|SYMBOL|TYPE|VOL|SL|TP (Async)
+        Gửi lệnh giao dịch: ORDER|SYMBOL|TYPE|VOL|SL|TP|PRICE (Async)
+        Price is mandatory for Pending Orders (BUY_STOP, SELL_STOP).
         """
-        command = f"ORDER|{symbol}|{order_type}|{volume}|{sl}|{tp}"
+        command = f"ORDER|{symbol}|{order_type}|{volume}|{sl}|{tp}|{price}"
         return await self._send_simple_command(command)
 
     async def get_open_positions(self, symbol: str = "ALL") -> List[Dict]:
@@ -187,4 +199,11 @@ class MT5DataClient:
         Đóng lệnh theo Ticket: CLOSE|TICKET (Async)
         """
         command = f"CLOSE|{ticket}"
+        return await self._send_simple_command(command)
+
+    async def delete_order(self, ticket: int) -> str:
+        """
+        Xóa lệnh chờ (Pending Order) theo Ticket: DELETE|TICKET (Async)
+        """
+        command = f"DELETE|{ticket}"
         return await self._send_simple_command(command)

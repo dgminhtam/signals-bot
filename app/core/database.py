@@ -378,3 +378,38 @@ async def get_latest_valid_signal(symbol: str, ttl_minutes: int = 60) -> Optiona
     except Exception as e:
         logger.error(f"Lỗi get_latest_valid_signal: {e}")
         return None
+
+async def get_events_for_trap(min_minutes: float = 1.6, max_minutes: float = 2.4) -> List[Dict[str, Any]]:
+    """
+    Lấy các tin USD High Impact sắp ra trong khoảng [min, max] phút tới.
+    Mục đích: Trap Trading (Straddle).
+    """
+    try:
+        async with get_db_connection() as conn:
+            # SQLite datetime('now') is UTC.
+            # Convert minutes to fraction of day for arithmetic if needed, or use modifier
+            # Modifier format: '+2 minutes'
+            
+            # Since we need a range, we check:
+            # timestamp >= now + min_minutes
+            # timestamp <= now + max_minutes
+            
+            min_offset = f'+{min_minutes} minutes'
+            max_offset = f'+{max_minutes} minutes'
+            
+            # Debug SQL logic: 
+            # timestamp between (now + 1.5 min) and (now + 2.5 min)
+            
+            async with conn.execute('''
+                SELECT * FROM economic_events
+                WHERE currency = 'USD'
+                AND impact = 'High'
+                AND status = 'pre_notified'
+                AND timestamp >= datetime('now', ?)
+                AND timestamp <= datetime('now', ?)
+            ''', (min_offset, max_offset)) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+    except Exception as e:
+        logger.error(f"Lỗi get_events_for_trap: {e}")
+        return []

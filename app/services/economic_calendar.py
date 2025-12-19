@@ -315,8 +315,33 @@ class EconomicCalendarService:
                 await self.send_post_alert(event, time_str)
                 await database.update_event_status(event['id'], 'post_notified')
 
+            # --- TRAP TRADING (STRADDLE) ---
+            # Check for High Impact USD news in 2 minutes
+            trap_events = await database.get_events_for_trap(min_minutes=1.5, max_minutes=2.5)
+            if trap_events:
+                logger.info(f"⏰ Pre-News Alert! {len(trap_events)} High Impact USD event(s) in ~2 mins.")
+                for ev in trap_events:
+                    logger.info(f"   -> Setup Trap for: {ev['title']}")
+                
+                # Activate AutoTrader Trap
+                try:
+                    trader = AutoTrader("XAUUSD") # Default XAUUSD for News Trap
+                    tickets = await trader.place_straddle_orders(distance_pips=20, sl_pips=10, tp_pips=30)
+                    
+                    if tickets:
+                        logger.info(f"   ✅ Trap Placed: {tickets}. Scheduling cleanup in 15m.")
+                        # Schedule Cleanup Task (Fire & Forget)
+                        asyncio.create_task(self._schedule_cleanup(trader, tickets, delay=15*60))
+                except Exception as e:
+                    logger.error(f"   ❌ Trap Setup Failed: {e}")
+                    
         except Exception as e:
             logger.error(f"Error in process_calendar_alerts: {e}")
+
+    async def _schedule_cleanup(self, trader: AutoTrader, tickets: List[str], delay: float):
+        """Helper to cleanup pending orders after delay"""
+        await asyncio.sleep(delay)
+        await trader.cleanup_pending_orders(tickets)
 
     async def send_pre_alert(self, event, minutes_left, time_str):
         # AI Engine Async Call
