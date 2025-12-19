@@ -88,29 +88,44 @@ async def fetch_url(url: str, timeout: int = 30) -> Optional[Any]:
     return None
 
 def _parse_article_sync(url: str, html_content: str) -> Dict[str, str]:
-    """Hàm đồng bộ để parse article bằng trafilatura"""
+    """Hàm đồng bộ để parse article: Ưu tiên BS4 og:image -> Trafilatura"""
     try:
-        # Trafilatura extract from HTML string
-        # output_format='json' returns a JSON string with fields: source, url, title, text, etc.
-        # But wait, trafilatura.extract usually returns a string (text) or JSON string.
-        # We need to parse that JSON string.
-        
-        # NOTE: trafilatura.extract(..., output_format="json") result is a JSON string.
+        # 1. Try finding og:image with BeautifulSoup (Best quality)
+        og_image = None
+        try:
+            soup = BeautifulSoup(html_content, 'html.parser')
+            meta_img = soup.find("meta", property="og:image")
+            if meta_img and meta_img.get("content"):
+                og_image = meta_img["content"]
+        except Exception:
+            pass
+
+        # 2. Extract text/metadata with Trafilatura
         extracted_json_str = trafilatura.extract(html_content, include_images=True, output_format="json", url=url)
+        
+        text_content = ""
+        trafilatura_image = None
         
         if extracted_json_str:
             data = json.loads(extracted_json_str)
-            return {
-                "text": data.get("text", "").strip(),
-                "image": data.get("image") or data.get("fingerprint") # Trafilatura image extraction varies
-            }
+            text_content = data.get("text", "").strip()
+            # Trafilatura returns 'image' or 'graphic'
+            trafilatura_image = data.get("image") or data.get("graphic")
+            
+        # 3. Determine final image (BS4 > Trafilatura)
+        final_image = og_image if og_image else trafilatura_image
         
-        # Fallback if specific extraction fails but maybe text exists? 
-        # Re-try text only? No, just return empty.
-        return {}
+        # Validate image URL basic
+        if final_image and not final_image.startswith("http"):
+             final_image = None
+
+        return {
+            "text": text_content,
+            "image": final_image
+        }
         
     except Exception as e:
-        logger.error(f"Trafilatura parse error: {e}")
+        logger.error(f"Parse error: {e}")
         return {}
 
 async def get_full_content(url: str, selector: str = None) -> Dict[str, str]:
