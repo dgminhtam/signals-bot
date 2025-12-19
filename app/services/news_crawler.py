@@ -22,13 +22,10 @@ except ImportError:
     config.logger.warning("Thư viện 'curl_cffi' chưa được cài đặt. (pip install curl_cffi)")
 
 try:
-    from newspaper import Article, Source
-    import newspaper
+    import trafilatura
+    from bs4 import BeautifulSoup
 except ImportError:
-    Article = None
-    Source = None
-    newspaper = None
-    config.logger.warning("Thư viện 'newspaper3k' chưa được cài đặt. (pip install newspaper3k lxml_html_clean)")
+    config.logger.warning("Thư viện 'trafilatura' hoặc 'beautifulsoup4' chưa được cài đặt.")
 
 logger = config.logger
 KEYWORDS = {
@@ -91,25 +88,29 @@ async def fetch_url(url: str, timeout: int = 30) -> Optional[Any]:
     return None
 
 def _parse_article_sync(url: str, html_content: str) -> Dict[str, str]:
-    """Hàm đồng bộ để parse article bằng newspaper3k"""
-    if not Article: return {}
+    """Hàm đồng bộ để parse article bằng trafilatura"""
     try:
-        # --- FIX: Config tắt cache PHẢI NẰM Ở ĐÂY ---
-        import newspaper
-        conf = newspaper.Config()
-        conf.memoize_articles = False # Fix WinError 3
-        conf.fetch_images = False
+        # Trafilatura extract from HTML string
+        # output_format='json' returns a JSON string with fields: source, url, title, text, etc.
+        # But wait, trafilatura.extract usually returns a string (text) or JSON string.
+        # We need to parse that JSON string.
         
-        article = Article(url, config=conf) # Truyền config vào
-        article.set_html(html_content)
-        article.parse()
+        # NOTE: trafilatura.extract(..., output_format="json") result is a JSON string.
+        extracted_json_str = trafilatura.extract(html_content, include_images=True, output_format="json", url=url)
         
-        return {
-            "text": article.text.strip(),
-            "image": article.top_image
-        }
+        if extracted_json_str:
+            data = json.loads(extracted_json_str)
+            return {
+                "text": data.get("text", "").strip(),
+                "image": data.get("image") or data.get("fingerprint") # Trafilatura image extraction varies
+            }
+        
+        # Fallback if specific extraction fails but maybe text exists? 
+        # Re-try text only? No, just return empty.
+        return {}
+        
     except Exception as e:
-        logger.error(f"Newspaper parse error: {e}")
+        logger.error(f"Trafilatura parse error: {e}")
         return {}
 
 async def get_full_content(url: str, selector: str = None) -> Dict[str, str]:
@@ -118,8 +119,8 @@ async def get_full_content(url: str, selector: str = None) -> Dict[str, str]:
     """
     error_res = {"content": "", "image_url": ""}
     
-    if not AsyncSession or not Article:
-        error_res["content"] = "Lỗi: Thiếu thư viện curl_cffi hoặc newspaper3k."
+    if not AsyncSession:
+        error_res["content"] = "Lỗi: Thiếu thư viện curl_cffi."
         return error_res
 
     response = await fetch_url(url)
@@ -142,7 +143,7 @@ async def get_full_content(url: str, selector: str = None) -> Dict[str, str]:
         if len(full_text) > 100:
             return {"content": full_text, "image_url": top_image}
         else:
-            error_res["content"] = "Nội dung quá ngắn/bị ẩn (Newspaper parse failed)."
+            error_res["content"] = "Nội dung quá ngắn/bị ẩn (Extraction failed)."
             return error_res
 
     except Exception as e:
@@ -171,36 +172,49 @@ async def get_rss_feed_data(url: str, timeout: int = 30):
         return None
 
 def _scrape_fallback_sync(url: str, html_content: str) -> List[Dict]:
-    """Logic parse fallback dùng newspaper.Source (Sync)"""
-    if not newspaper: return []
+    """Logic parse fallback dùng BeautifulSoup (Sync) thay vì Newspaper Source"""
     entries = []
     seen_titles = set()
     try:
-        source = newspaper.Source(url)
-        source.html = html_content
-        source.parse()
+        soup = BeautifulSoup(html_content, 'html.parser')
         
-        if not source.articles:
-             return []
-             
-        for article in source.articles:
-            href = article.url
-            if not href: continue
+        # Tìm tất cả thẻ a có href
+        links = soup.find_all('a', href=True)
+        
+        exclude_patterns = ["/tag/", "/category/", "login", "signup", "author", "javascript:", "mailto:"]
+        
+        for link in links:
+            href = link['href']
+            # Make absolute URL
+            full_url = urljoin(url, href)
             
-            # Ở đây không gọi check_keywords (để logic đó ở ngoài hoặc truyền vào nếu cần)
-            # Tạm thời chỉ extract URL thô, lọc sau
+            # Basic validation
+            if not full_url.startswith("http"): continue
             
-            fake_title = href.split('/')[-1].replace('-', ' ').title()
-            if len(fake_title) < 10: continue
-            if href in seen_titles: continue
-            seen_titles.add(href)
+            # Filter non-article links
+            is_valid = True
+            for pattern in exclude_patterns:
+                if pattern in full_url:
+                    is_valid = False
+                    break
+            if not is_valid: continue
+
+            # Get text as temporary title
+            title_text = link.get_text().strip()
+            
+            # Filter garbage
+            if len(title_text) < 10: continue
+            if full_url in seen_titles: continue
+            
+            seen_titles.add(full_url)
             
             entries.append({
-                "title": fake_title,
-                "link": href,
+                "title": title_text,
+                "link": full_url,
                 "summary": "",
                 "published": datetime.now(timezone.utc).isoformat()
             })
+            
         return entries
     except Exception as e:
         logger.error(f"Fallback parse error: {e}")
@@ -235,7 +249,7 @@ async def scrape_website_fallback(source_config: Dict) -> List[Dict]:
              if len(check_keywords(entry['link'])) > 0:
                  filtered_entries.append(entry)
         
-        logger.info(f"✅ Web Scraping (Newspaper Source) tìm thấy {len(filtered_entries)} bài viết tiềm năng.")
+        logger.info(f"✅ Web Scraping (BeautifulSoup) tìm thấy {len(filtered_entries)} bài viết tiềm năng.")
         return filtered_entries
         
     except Exception as e:
