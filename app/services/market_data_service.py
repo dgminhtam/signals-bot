@@ -9,7 +9,7 @@ from app.services.mt5_bridge import MT5DataClient
 from app.core import config
 
 logger = config.logger
-loop = asyncio.get_event_loop()
+
 
 # Helper for Sync Libraries
 def _sync_get_data_from_tradingview(symbol: str, exchange: str) -> Optional[pd.DataFrame]:
@@ -88,6 +88,7 @@ async def get_market_data(symbol: str = "XAUUSD") -> Tuple[Optional[pd.DataFrame
     Trả về (DataFrame, source_name)
     """
     logger.info(f"📊 Đang lấy dữ liệu thị trường cho {symbol}...")
+    loop = asyncio.get_running_loop()
     
     df = None
     
