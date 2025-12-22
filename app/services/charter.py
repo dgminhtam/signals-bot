@@ -5,12 +5,9 @@ import matplotlib.pyplot as plt
 import mplfinance as mpf
 import pandas as pd
 import numpy as np
-import yfinance as yf
-from typing import Tuple, Dict, Optional
+from typing import Optional
 import os
 import sys
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
 
 # Add project root to path to allow direct execution
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -18,200 +15,14 @@ project_root = os.path.dirname(os.path.dirname(current_dir))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from app.services.mt5_bridge import MT5DataClient
 from app.core import config
+from app.services.ta_service import calculate_fibonacci_levels, analyze_trend
 
 logger = config.logger
 IMAGES_DIR = config.IMAGES_DIR
 
 if not os.path.exists(IMAGES_DIR):
     os.makedirs(IMAGES_DIR)
-
-# Helper for Sync Libraries
-def _sync_get_data_from_tradingview(symbol: str, exchange: str) -> Optional[pd.DataFrame]:
-    try:
-        from app.services.tvdatafeed_client import TvDatafeed, Interval
-        
-        logger.info(f"🔄 Fallback 2: Đang lấy dữ liệu từ TradingView ({symbol}/{exchange})...")
-        tv = TvDatafeed()
-        df = tv.get_hist(
-            symbol=symbol,
-            exchange=exchange,
-            interval=Interval.in_1_hour,
-            n_bars=120
-        )
-        
-        if df is None or df.empty:
-            logger.warning("⚠️ TradingView không trả về dữ liệu.")
-            return None
-        
-        # Chuẩn hóa cột
-        df.index.name = 'Date'
-        df.rename(columns={
-            'open': 'Open',
-            'high': 'High',
-            'low': 'Low',
-            'close': 'Close',
-            'volume': 'Volume'
-        }, inplace=True)
-        
-        df = df.tail(120)
-        logger.info(f"✅ Đã lấy {len(df)} nến từ TradingView.")
-        return df
-        
-    except ImportError:
-        logger.warning("⚠️ Chưa cài tvDatafeed, bỏ qua TradingView fallback.")
-        return None
-    except Exception as e:
-        logger.error(f"❌ Lỗi lấy dữ liệu từ TradingView: {e}")
-        return None
-
-def _sync_get_data_from_yfinance(symbol: str, period: str, interval: str) -> Optional[pd.DataFrame]:
-    try:
-        # Map symbol: XAUUSD -> GC=F (Gold Futures)
-        yf_symbol = "GC=F" if symbol == "XAUUSD" else symbol
-        
-        logger.info(f"🔄 Fallback 3: Đang lấy dữ liệu từ yfinance ({yf_symbol})...")
-        ticker = yf.Ticker(yf_symbol)
-        df = ticker.history(period=period, interval=interval)
-        
-        if df.empty:
-            logger.warning("⚠️ yfinance không trả về dữ liệu.")
-            return None
-        
-        # Chuẩn hóa cột để khớp với MT5 format
-        df.rename(columns={
-            'Open': 'Open',
-            'High': 'High', 
-            'Low': 'Low',
-            'Close': 'Close',
-            'Volume': 'Volume'
-        }, inplace=True)
-        
-        # Lấy 120 nến gần nhất
-        df = df.tail(120)
-        
-        logger.info(f"✅ Đã lấy {len(df)} nến từ yfinance.")
-        return df
-        
-    except Exception as e:
-        logger.error(f"❌ Lỗi lấy dữ liệu từ yfinance: {e}")
-        return None
-
-async def get_market_data(symbol: str = "XAUUSD") -> Tuple[Optional[pd.DataFrame], str]:
-    """
-    Hàm trung tâm để lấy dữ liệu thị trường theo thứ tự: MT5 (Retry 3 lần) -> TradingView -> yfinance
-    Trả về (DataFrame, source_name)
-    """
-    logger.info(f"📊 Đang lấy dữ liệu thị trường cho {symbol}...")
-    
-    df = None
-    
-    # 1. Thử MT5 trước (Primary) với Smart Retry
-    MT5_MAX_RETRIES = 3
-    for attempt in range(1, MT5_MAX_RETRIES + 1):
-        try:
-            client = MT5DataClient()
-            if await client.connect():
-                df = await client.get_historical_data(symbol, timeframe="H1", count=120)
-                await client.disconnect()
-                
-                if df is not None and not df.empty:
-                    logger.info(f"✅ Đã lấy dữ liệu từ MT5 (Attempt {attempt}/{MT5_MAX_RETRIES})")
-                    return df, "MT5"
-                else:
-                    logger.warning(f"⚠️ MT5 connected but returned no data (Attempt {attempt}/{MT5_MAX_RETRIES}).")
-            else:
-                 logger.warning(f"⚠️ MT5 connection failed (Attempt {attempt}/{MT5_MAX_RETRIES}).")
-        except Exception as e:
-            logger.warning(f"⚠️ Error accessing MT5 (Attempt {attempt}/{MT5_MAX_RETRIES}): {e}")
-        
-        # Nếu chưa phải lần cuối, sleep 1 chút để retry
-        if attempt < MT5_MAX_RETRIES:
-            logger.info("   ...Retrying MT5 in 1.5s...")
-            await asyncio.sleep(1.5)
-
-    logger.warning("❌ Hết số lần thử MT5. Chuyển sang Fallback...")
-
-    # 2. Fallback 1: TradingView (Sync wrapped in Executor)
-    logger.warning("⚠️ Chuyển sang TradingView...")
-    try:
-        df = await loop.run_in_executor(None, _sync_get_data_from_tradingview, symbol, "OANDA")
-        if df is not None and not df.empty:
-            logger.info(f"✅ Đã lấy dữ liệu từ TradingView")
-            return df, "TradingView"
-    except Exception as e:
-        logger.error(f"❌ Lỗi Fallback TradingView: {e}")
-    
-    # 3. Fallback 2: yfinance (Sync wrapped in Executor)
-    logger.warning("⚠️ TradingView không khả dụng, chuyển sang yfinance...")
-    try:
-        df = await loop.run_in_executor(None, _sync_get_data_from_yfinance, symbol, "5d", "1h")
-        if df is not None and not df.empty:
-            logger.info(f"✅ Đã lấy dữ liệu từ yfinance")
-            return df, "yfinance"
-    except Exception as e:
-         logger.error(f"❌ Lỗi Fallback yfinance: {e}")
-    
-    logger.error("❌ Không thể lấy dữ liệu từ cả 3 nguồn")
-    return None, "None"
-
-def calculate_fibonacci_levels(df: pd.DataFrame, window: int = 120) -> Dict[str, float]:
-    """
-    Tính toán các mức Fibonacci Retracement (CPU Bound - Fast enough to keep sync or await loop if needed)
-    Keeping sync for simplicity as logic is lightweight math.
-    """
-    try:
-        # Lấy window nến gần nhất
-        recent_df = df.tail(window)
-        
-        # Tìm đỉnh và đáy
-        price_high = recent_df['High'].max()
-        price_low = recent_df['Low'].min()
-        diff = price_high - price_low
-        
-        # Tính các mức Fibonacci (từ đỉnh xuống đáy)
-        fibo_levels = {
-            '0.0': price_high,
-            '0.236': price_high - (diff * 0.236),
-            '0.382': price_high - (diff * 0.382),
-            '0.5': price_high - (diff * 0.5),
-            '0.618': price_high - (diff * 0.618),  # Golden Ratio
-            '0.786': price_high - (diff * 0.786),
-            '1.0': price_low
-        }
-        
-        return fibo_levels
-        
-    except Exception as e:
-        logger.error(f"❌ Lỗi tính Fibonacci: {e}")
-        return {}
-
-
-def _analyze_trend(df: pd.DataFrame, ai_trend: str = None) -> str:
-    """
-    Xác định xu hướng.
-    Ưu tiên AI Trend (nếu có). Fallback về SMA20.
-    Returns: "UP" | "DOWN" | "NEUTRAL"
-    """
-    # 1. AI Override
-    if ai_trend:
-        t_upper = ai_trend.upper()
-        if "BULLISH" in t_upper: return "UP"
-        if "BEARISH" in t_upper: return "DOWN"
-        return "NEUTRAL"
-
-    # 2. Technical Fallback (SMA20)
-    try:
-        if len(df) < 20:
-             return "UP" if df['Close'].iloc[-1] >= df['Close'].iloc[-2] else "DOWN"
-        
-        sma20 = df['Close'].tail(20).mean()
-        current_price = df['Close'].iloc[-1]
-        
-        return "UP" if current_price >= sma20 else "DOWN"
-    except:
-        return "NEUTRAL"
 
 def _prepare_volume_plots(plot_df: pd.DataFrame, up_color: str, down_color: str) -> list:
     """
@@ -261,10 +72,8 @@ def draw_price_chart(symbol: str = "XAUUSD", df: Optional[pd.DataFrame] = None, 
     
     try:
         # Chú ý: Hàm này giả định DF đã được truyền vào từ bên ngoài (đã await xong).
-        # Nếu df None, ta không thể gọi await get_market_data() ở đây vì đây là sync func.
-        # Chúng ta sẽ trả về None nếu df is None.
         if df is None:
-            logger.error("❌ DataFrame is None in draw_price_chart. Cannot fetch data inside sync function.")
+            logger.error("❌ DataFrame is None in draw_price_chart.")
             return None
         
         # Ensure data is sorted by Date (Oldest to Newest)
@@ -366,7 +175,7 @@ def draw_price_chart(symbol: str = "XAUUSD", df: Optional[pd.DataFrame] = None, 
                         bbox=dict(boxstyle="square,pad=0.2", facecolor=bg_color, edgecolor=fibo_color, alpha=0.7, linewidth=0.5))
 
         # Trend Arrow
-        trend = _analyze_trend(df, ai_trend)
+        trend = analyze_trend(df, ai_trend)
         arrow_color = up_color if trend == "UP" else down_color
         arrow_text = "TĂNG" if trend == "UP" else "GIẢM"
         
@@ -384,73 +193,3 @@ def draw_price_chart(symbol: str = "XAUUSD", df: Optional[pd.DataFrame] = None, 
     except Exception as e:
         logger.error(f"❌ Lỗi vẽ chart: {e}")
         return None
-
-def get_technical_analysis(df: pd.DataFrame) -> str:
-    """
-    Phân tích kỹ thuật đơn giản (Sync)
-    """
-    try:
-        if df is None or df.empty:
-            return "Không có dữ liệu để phân tích."
-        
-        current_price = df['Close'].iloc[-1]
-        fibo_levels = calculate_fibonacci_levels(df, window=120)
-        
-        support_level = None
-        resistance_level = None
-        support_name = ""
-        resistance_name = ""
-        
-        if fibo_levels:
-            for level_name, price in fibo_levels.items():
-                if price < current_price:
-                    if support_level is None or price > support_level:
-                        support_level = price
-                        support_name = level_name
-                elif price > current_price:
-                    if resistance_level is None or price < resistance_level:
-                        resistance_level = price
-                        resistance_name = level_name
-        
-        current_vol = df['Volume'].iloc[-1]
-        prev_vol = df['Volume'].iloc[-2] if len(df) > 1 else current_vol
-        vol_avg_20 = df['Volume'].tail(20).mean()
-        vol_signal = "TĂNG" if current_vol >= prev_vol else "GIẢM"
-        
-        def fmt_fibo(name):
-            try: return f"{float(name)*100:g}"
-            except: return name
-
-        support_str = f"{support_level:.2f} (Fibo {fmt_fibo(support_name)})" if support_level else "N/A"
-        resistance_str = f"{resistance_level:.2f} (Fibo {fmt_fibo(resistance_name)})" if resistance_level else "N/A"
-        
-        summary = f"""
-- Giá hiện tại: {current_price:.2f}
-- Hỗ trợ: {support_str}
-- Kháng cự: {resistance_str}
-- Volume: {int(current_vol):,} ({vol_signal} vs {int(prev_vol):,})
-- Vol TB 20: {int(vol_avg_20):,}
-        """
-        return summary.strip()
-        
-    except Exception as e:
-        logger.error(f"❌ Lỗi get_technical_analysis: {e}")
-        return "Lỗi tính toán."
-
-if __name__ == "__main__":
-    # Test Async Flow
-    async def test_main():
-        try:
-            df, source = await get_market_data("XAUUSD")
-            if df is not None:
-                print("--- Technical Analysis ---")
-                print(get_technical_analysis(df))
-                print("--------------------------")
-                
-                # Draw Chart (Run in thread pool usually, but detailed test here)
-                chart_path = await asyncio.to_thread(draw_price_chart, "XAUUSD", df, source)
-                print(f"Chart saved to: {chart_path}")
-        except Exception as e:
-            logger.error(f"Test Failed: {e}")
-
-    asyncio.run(test_main())

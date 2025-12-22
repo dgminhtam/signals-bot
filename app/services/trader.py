@@ -3,7 +3,7 @@ import asyncio
 import time
 from typing import List
 from datetime import datetime, timedelta
-from app.services.charter import get_market_data
+from app.services.market_data_service import get_market_data
 from app.services.mt5_bridge import MT5DataClient
 from app.core import database
 from app.core import config

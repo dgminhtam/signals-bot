@@ -5,7 +5,10 @@ import asyncio
 from typing import Dict, Any, List
 from app.core import database
 from app.services import ai_engine
+
 from app.services import charter
+from app.services.market_data_service import get_market_data
+from app.services.ta_service import get_technical_analysis
 from app.services import telegram_bot
 from app.core import config 
 from app.utils.helpers import get_random_cta
@@ -118,14 +121,14 @@ async def main():
         logger.info("📊 ĐANG LẤY DỮ LIỆU THỊ TRƯỜNG...")
         
         # Call Async
-        market_df, source = await charter.get_market_data()
+        market_df, source = await get_market_data()
         
         if market_df is None or market_df.empty:
             logger.error("❌ Không thể lấy dữ liệu thị trường, quy trình có thể bị ảnh hưởng.")
             technical_data = "Không có dữ liệu kỹ thuật."
         else:
             # Lấy thông tin kỹ thuật (CPU bound func but fast)
-            technical_data = charter.get_technical_analysis(market_df)
+            technical_data = get_technical_analysis(market_df)
             logger.info(f"   + Technical Info: {technical_data.replace(chr(10), ' | ')}")
 
         # 3. GỌI AI PHÂN TÍCH (trước khi vẽ chart)
