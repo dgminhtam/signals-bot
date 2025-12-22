@@ -109,7 +109,7 @@ async def analyze_market(
         content = art.get('content', '') or art.get('summary', '') or ''
         content_clean = content.replace('"', "'").replace('\n', ' ').strip()
         
-        MAX_CONTENT_LENGTH = 5000
+        MAX_CONTENT_LENGTH = 1000
         if len(content_clean) > MAX_CONTENT_LENGTH: 
             content_clean = content_clean[:MAX_CONTENT_LENGTH] + "..."
         
