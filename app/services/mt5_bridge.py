@@ -162,6 +162,14 @@ class MT5DataClient:
         command = f"ORDER|{symbol}|{order_type}|{volume}|{sl}|{tp}|{price}"
         return await self._send_simple_command(command)
 
+    async def execute_order_relative(self, symbol: str, order_type: str, volume: float, sl_points: float, tp_points: float) -> str:
+        """
+        Gửi lệnh giao dịch Relative (Fast execution for News):
+        ORDER_REL|SYMBOL|TYPE|VOL|SL_POINTS|TP_POINTS
+        """
+        command = f"ORDER_REL|{symbol}|{order_type}|{volume}|{sl_points}|{tp_points}"
+        return await self._send_simple_command(command)
+
     async def get_open_positions(self, symbol: str = "ALL") -> List[Dict]:
         """
         Lấy danh sách lệnh đang mở (Async).

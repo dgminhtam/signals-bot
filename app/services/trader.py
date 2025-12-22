@@ -205,33 +205,20 @@ class AutoTrader:
 
         # ===== STEP 3: OFFENSIVE (Sniper Entry) =====
         if score >= 8:
-            logger.info(f"⚔️ [OFFENSIVE] High Impact News detected (Score {score}). Preparing Sniper Entry...")
+            logger.info(f"⚔️ [OFFENSIVE] High Impact News detected (Score {score}). Preparing Sniper Entry (Fire-and-Forget)...")
             
-            # Get Current Price
-            df, _ = await get_market_data(self.symbol)
-            if df is None or df.empty:
-                logger.error("   -> Failed to get price for Sniper Entry.")
-                return
-
-            current_price = df['Close'].iloc[-1]
+            # FAST TRACK: NO MARKET DATA FETCHING
+            # Use relative points for SL/TP (Assuming XAUUSD Standard)
+            # 1000 Points = 100 Pips (if 1 pip = 10 points) ~ $10 Price Move (if 1 point = 0.01)
+            SL_POINTS = 1000.0 
+            TP_POINTS = 2000.0
             
-            sl = 0.0
-            tp = 0.0
-            SL_DIST = 10.0
-            TP_DIST = 20.0
+            logger.info(f"🚀 SNIPER EXECUTION: {signal_direction} (Rel. Pts - SL: {SL_POINTS}, TP: {TP_POINTS})")
             
-            if signal_direction == "BUY":
-                sl = current_price - SL_DIST
-                tp = current_price + TP_DIST
-            else:
-                sl = current_price + SL_DIST
-                tp = current_price - TP_DIST
-                
-            logger.info(f"🚀 SNIPER EXECUTION: {signal_direction} @ {current_price:.2f} (SL: {sl}, TP: {tp})")
-            
+            # Call relative execution immediately
             response = await self._retry_action(
-                self.client.execute_order, 
-                self.symbol, signal_direction, self.volume, sl, tp
+                self.client.execute_order_relative, 
+                self.symbol, signal_direction, self.volume, SL_POINTS, TP_POINTS
             )
             
             logger.info(f"   -> Sniper Result: {response}")
