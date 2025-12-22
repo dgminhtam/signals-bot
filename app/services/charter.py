@@ -369,9 +369,8 @@ def draw_price_chart(symbol: str = "XAUUSD", df: Optional[pd.DataFrame] = None, 
         trend = _analyze_trend(df, ai_trend)
         arrow_color = up_color if trend == "UP" else down_color
         arrow_text = "TĂNG" if trend == "UP" else "GIẢM"
-        trend_source = "AI" if ai_trend else "MA20"
         
-        ax.annotate(f"Xu hướng ({trend_source}): {arrow_text}", xy=(0.95, 0.92), xycoords='axes fraction',
+        ax.annotate(f"Xu hướng: {arrow_text}", xy=(0.95, 0.92), xycoords='axes fraction',
                     fontsize=12, fontweight='bold', color=arrow_color, ha='right', va='top',
                     bbox=dict(boxstyle="round,pad=0.3", fc=bg_color, ec=arrow_color, alpha=0.8))
         
