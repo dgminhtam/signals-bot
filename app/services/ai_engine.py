@@ -91,7 +91,7 @@ async def analyze_market(
     logger.info(f"🤖 AI nhận {len(articles)} bài báo...")
     
     # 1. Giới hạn số lượng articles
-    MAX_ARTICLES = 5
+    MAX_ARTICLES = 10
     if len(articles) > MAX_ARTICLES:
         articles_sorted = sorted(
             articles, 
