@@ -72,7 +72,16 @@ def format_telegram_message(data: Dict[str, Any], articles: List[Dict[str, Any]]
     
     # Xử lý phần Chiến lược Giao dịch (Strict Format)
     signal = data.get('trade_signal', {})
-    order_type = signal.get('order_type', 'WAIT').upper()
+    raw_order_type = signal.get('order_type', 'WAIT').upper()
+    reason = data.get('conclusion', 'Không có lý do cụ thể.')
+    
+    # 1. Relaxed Order Type Check
+    if "BUY" in raw_order_type:
+        order_type = "BUY"
+    elif "SELL" in raw_order_type:
+        order_type = "SELL"
+    else:
+        order_type = "WAIT"
     
     if order_type in ['BUY', 'SELL']:
         # Format số đẹp (bỏ số 0 vô nghĩa)
@@ -94,11 +103,16 @@ def format_telegram_message(data: Dict[str, Any], articles: List[Dict[str, Any]]
             f"✅ <b>TP1:</b> {tp1}\n"
             f"✅ <b>TP2:</b> {tp2}\n"
             f"▬▬▬▬▬▬▬▬▬▬▬▬\n"
+            f"<i>📝 Lý do: {reason}</i>\n"
             f"<i>(Khuyến nghị: Quản lý vốn 1-2%)</i>"
         )
     else:
         # Trường hợp WAIT hoặc không có signal
-        strategy_text = f"⏳ <b>THỊ TRƯỜNG CHƯA RÕ XU HƯỚNG</b>\n▬▬▬▬▬▬▬▬▬▬▬▬\n<i>📝 Lý do: {conclusion}</i>"
+        strategy_text = (
+            f"⏳ <b>THỊ TRƯỜNG CHƯA RÕ XU HƯỚNG (WAIT)</b>\n"
+            f"▬▬▬▬▬▬▬▬▬▬▬▬\n"
+            f"📝 <b>Lý do:</b> {reason}"
+        )
 
     message = (
         f"{cta_text}\n\n"

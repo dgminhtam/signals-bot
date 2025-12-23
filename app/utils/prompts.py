@@ -35,6 +35,9 @@ Hệ thống ghi nhận trạng thái từ phiên trước:
 - Tin Dovish (Hại USD) / Chiến tranh / Lạm phát cao = Tích cực cho Vàng (Điểm > 0).
 - Tin Hawkish (Lợi USD) / Kinh tế Mỹ quá tốt / Lợi suất Bond tăng = Tiêu cực cho Vàng (Điểm < 0).
 Thang điểm: -10 (Rất tiêu cực cho Vàng) đến +10 (Rất tích cực cho Vàng). 0 là trung lập.
+Quy tắc bổ sung:
+- Nếu Score > 2 hoặc Score < -2: Bắt buộc phải có trade_signal (BUY/SELL).
+- Nếu Score gần 0: trade_signal là WAIT.
 Ví dụ tham khảo (Few-shot prompting):
 - Score +8 đến +10: Chiến tranh leo thang mạnh / Khủng hoảng kinh tế toàn cầu / Thiên tai lớn.
 - Score +4 đến +7: Fed cắt giảm lãi suất / USD Index giảm mạnh / Dữ liệu kinh tế Mỹ yếu kém (NFP giảm sâu).
@@ -63,18 +66,8 @@ Trả về JSON theo schema đã định nghĩa với các lưu ý sau:
 - headline: < 15 từ, bắt đầu bằng icon (🔥, 🚨, 📉, 📈), tóm tắt tác động mạnh nhất, xưng hô lịch sự, chuyên nghiệp.
 - trend: Chính xác là "BULLISH 🟢", "BEARISH 🔴", hoặc "SIDEWAY 🟡".
 - bullet_points: 3 gạch đầu dòng quan trọng nhất (Nguyên nhân -> Kết quả). Dùng động từ mạnh. CHỈ ĐƯA TIN MỚI.
-- conclusion: Chiến lược giao dịch cụ thể (Signal). BẮT BUỘC tham chiếu mức giá trong "Dữ liệu Kỹ thuật".
-  Định dạng bắt buộc (dùng ký tự \\n để xuống dòng):
-  "[BUY/SELL] XAUUSD [NOW/LIMIT] [Entry Price]\\n❌SL: [SL]\\n✅TP1: [TP1]\\n✅TP2: [TP2]"
-  
-  Quy tắc Action:
-  - Dùng "BUY ... NOW" hoặc "SELL ... NOW" nếu giá hiện tại đã khớp vùng vào lệnh.
-  - Dùng "BUY ... LIMIT" hoặc "SELL ... LIMIT" nếu cần chờ giá hồi về vùng đẹp.
-  
-  Ví dụ mẫu:
-  "BUY XAUUSD LIMIT 2700\\n❌SL: 2650\\n✅TP1: 2750\\n✅TP2: 2780"
-  
-  Nếu không có dữ liệu kỹ thuật, chỉ đưa nhận định xu hướng.
+- conclusion: Tóm tắt ngắn gọn LÝ DO vào lệnh hoặc đứng ngoài (1-2 câu). TUYỆT ĐỐI KHÔNG viết lại các mức giá Entry/SL/TP ở đây (vì đã có trong trade_signal). Tập trung vào phân tích.
+- trade_signal: Object chứa thông số giao dịch. Nếu phân vân, hãy chọn order_type là 'WAIT'. Nếu có tín hiệu rõ ràng, order_type PHẢI là 'BUY' hoặc 'SELL' (không thêm chữ khác).
 - sentiment_score: Từ -10 (Cực xấu cho Gold) đến +10 (Cực tốt cho Gold). 0 là trung lập.
 """
 
