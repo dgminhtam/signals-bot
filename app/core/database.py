@@ -174,7 +174,7 @@ async def save_report(content: str, score: float, trend: str, signal_data: Optio
                 sig_type = signal_data.get('order_type')
                 entry = signal_data.get('entry_price', 0.0)
                 sl = signal_data.get('sl', 0.0)
-                tp = signal_data.get('tp', 0.0)
+                tp = signal_data.get('tp1', 0.0)
             
             await conn.execute('''
                 INSERT INTO reports (report_content, sentiment_score, trend, signal_type, entry_price, stop_loss, take_profit) 

@@ -70,6 +70,36 @@ def format_telegram_message(data: Dict[str, Any], articles: List[Dict[str, Any]]
     # Lấy câu CTA ngẫu nhiên
     cta_text = get_random_cta()
     
+    # Xử lý phần Chiến lược Giao dịch (Strict Format)
+    signal = data.get('trade_signal', {})
+    order_type = signal.get('order_type', 'WAIT').upper()
+    
+    if order_type in ['BUY', 'SELL']:
+        # Format số đẹp (bỏ số 0 vô nghĩa)
+        def fmt(val):
+            return f"{float(val):g}" if val is not None else "N/A"
+
+        symbol = "XAU/USD" # Mặc định
+        entry = fmt(signal.get('entry_price'))
+        sl = fmt(signal.get('sl'))
+        tp1 = fmt(signal.get('tp1'))
+        tp2 = fmt(signal.get('tp2'))
+        
+        strategy_text = (
+            f"🎯 <b>CHIẾN LƯỢC GIAO DỊCH</b>\n"
+            f"▬▬▬▬▬▬▬▬▬▬▬▬\n"
+            f"<b>🚀 {order_type} {symbol}</b>\n"
+            f"👉 <b>Entry:</b> {entry}\n"
+            f"🛑 <b>Stoploss:</b> {sl}\n"
+            f"✅ <b>TP1:</b> {tp1}\n"
+            f"✅ <b>TP2:</b> {tp2}\n"
+            f"▬▬▬▬▬▬▬▬▬▬▬▬\n"
+            f"<i>(Khuyến nghị: Quản lý vốn 1-2%)</i>"
+        )
+    else:
+        # Trường hợp WAIT hoặc không có signal
+        strategy_text = "⏳ <b>Thị trường chưa rõ xu hướng, tiếp tục quan sát.</b>"
+
     message = (
         f"{cta_text}\n\n"
         f"🔥 <b>{headline}</b> 🔥\n"
@@ -85,8 +115,7 @@ def format_telegram_message(data: Dict[str, Any], articles: List[Dict[str, Any]]
         f"{bullets_text}\n"
         f"━━━━━━━━━━━━\n\n"
         
-        f"🎯 <b>GỢI Ý GIAO DỊCH</b>\n"
-        f"{conclusion}\n\n"
+        f"{strategy_text}\n\n"
     )
     
     # 7. Add Source Hashtags

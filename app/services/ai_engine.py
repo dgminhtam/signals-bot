@@ -31,52 +31,9 @@ def get_ai_service() -> AIService:
 ai_service = get_ai_service()
 
 # --- JSON SCHEMAS ---
-analysis_schema = {
-     "type": "OBJECT",
-     "properties": {
-          "reasoning": {"type": "STRING", "description": "Chi tiết quy trình tư duy từng bước (CoT)"},
-          "headline": {"type": "STRING"},
-          "sentiment_score": {"type": "NUMBER"},
-          "trend": {"type": "STRING"},
-          "bullet_points": {"type": "ARRAY", "items": {"type": "STRING"}},
-          "conclusion": {"type": "STRING"},
-          "trade_signal": {
-                "type": "OBJECT",
-                "properties": {
-                    "order_type": {"type": "STRING", "description": "BUY/SELL/WAIT"},
-                    "entry_price": {"type": "NUMBER"},
-                    "sl": {"type": "NUMBER"},
-                    "tp": {"type": "NUMBER"}
-                },
-                "required": ["order_type", "entry_price", "sl", "tp"]
-          }
-     },
-     "required": ["reasoning", "headline", "sentiment_score", "trend", "bullet_points", "conclusion", "trade_signal"]
-}
 
-breaking_news_schema = {
-    "type": "OBJECT",
-     "properties": {
-          "is_breaking": {"type": "BOOLEAN"},
-          "score": {"type": "NUMBER"},
-          "headline": {"type": "STRING"},
-          "headline_vi": {"type": "STRING"},
-          "summary_vi": {"type": "STRING"},
-          "impact_vi": {"type": "STRING"}
-     },
-     "required": ["is_breaking", "score", "headline", "headline_vi", "summary_vi", "impact_vi"]
-}
 
-economic_schema = {
-     "type": "OBJECT",
-     "properties": {
-          "headline": {"type": "STRING"},
-          "impact_analysis": {"type": "STRING"},
-          "sentiment_score": {"type": "NUMBER"},
-          "conclusion": {"type": "STRING"}
-     },
-     "required": ["headline", "impact_analysis", "sentiment_score", "conclusion"]
-}
+
 
 # --- BUSINESS LOGIC FUNCTIONS (ASYNC) ---
 
@@ -147,7 +104,7 @@ async def analyze_market(
 
     # 3. Gọi AI qua Service Factory (Await Async)
     try:
-        response_text = await ai_service.generate_content(prompt, schema=analysis_schema)
+        response_text = await ai_service.generate_content(prompt, schema=prompts.analysis_schema)
         if not response_text: return None
         
         # Xử lý kết quả JSON
@@ -179,7 +136,7 @@ async def check_breaking_news(content: str) -> Optional[Dict[str, Any]]:
     
     try:
         # Sử dụng Breaking News Schema (Await Async)
-        response_text = await ai_service.generate_content(prompt, schema=breaking_news_schema)
+        response_text = await ai_service.generate_content(prompt, schema=prompts.breaking_news_schema)
         if not response_text: return None
         
         try:
@@ -212,7 +169,7 @@ async def analyze_economic_data(event: Dict[str, Any]) -> Optional[Dict[str, Any
     )
     
     try:
-        response_text = await ai_service.generate_content(prompt, schema=economic_schema)
+        response_text = await ai_service.generate_content(prompt, schema=prompts.economic_schema)
         if not response_text: return None
         
         try:
@@ -225,15 +182,7 @@ async def analyze_economic_data(event: Dict[str, Any]) -> Optional[Dict[str, Any
         logger.error(f"❌ Lỗi AI Economic Analysis: {e}")
         return None
 
-economic_pre_schema = {
-     "type": "OBJECT",
-     "properties": {
-          "explanation": {"type": "STRING"},
-          "scenario_high": {"type": "STRING"},
-          "scenario_low": {"type": "STRING"}
-     },
-     "required": ["explanation", "scenario_high", "scenario_low"]
-}
+
 
 async def analyze_pre_economic_data(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
@@ -247,7 +196,7 @@ async def analyze_pre_economic_data(event: Dict[str, Any]) -> Optional[Dict[str,
     )
     
     try:
-        response_text = await ai_service.generate_content(prompt, schema=economic_pre_schema)
+        response_text = await ai_service.generate_content(prompt, schema=prompts.economic_pre_schema)
         if not response_text: return None
         
         try:

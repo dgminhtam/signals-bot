@@ -142,3 +142,63 @@ Output JSON (Strict):
   "scenario_low": "Nếu Thực tế < Dự báo: [Tác động USD] -> [Tác động Vàng]."
 }}
 """
+
+# --- JSON SCHEMAS ---
+analysis_schema = {
+     "type": "OBJECT",
+     "properties": {
+          "reasoning": {"type": "STRING", "description": "Chi tiết quy trình tư duy từng bước (CoT)"},
+          "headline": {"type": "STRING"},
+          "sentiment_score": {"type": "NUMBER"},
+          "trend": {"type": "STRING"},
+          "bullet_points": {"type": "ARRAY", "items": {"type": "STRING"}},
+          "conclusion": {"type": "STRING"},
+          "trade_signal": {
+                "type": "OBJECT",
+                "properties": {
+                    "order_type": {"type": "STRING", "description": "BUY/SELL/WAIT"},
+                    "entry_price": {"type": "NUMBER"},
+                    "sl": {"type": "NUMBER"},
+                    "tp1": {"type": "NUMBER", "description": "Mức chốt lời an toàn (Target 1)"},
+                    "tp2": {"type": "NUMBER", "description": "Mức chốt lời kỳ vọng (Target 2)"}
+                },
+                "required": ["order_type", "entry_price", "sl", "tp1", "tp2"]
+          }
+     },
+     "required": ["reasoning", "headline", "sentiment_score", "trend", "bullet_points", "conclusion", "trade_signal"]
+}
+
+breaking_news_schema = {
+    "type": "OBJECT",
+     "properties": {
+          "is_breaking": {"type": "BOOLEAN"},
+          "score": {"type": "NUMBER"},
+          "headline": {"type": "STRING"},
+          "headline_vi": {"type": "STRING"},
+          "summary_vi": {"type": "STRING"},
+          "impact_vi": {"type": "STRING"},
+          "trend_forecast": {"type": "STRING"}
+     },
+     "required": ["is_breaking", "score", "headline", "headline_vi", "summary_vi", "impact_vi", "trend_forecast"]
+}
+
+economic_schema = {
+     "type": "OBJECT",
+     "properties": {
+          "headline": {"type": "STRING"},
+          "impact_analysis": {"type": "STRING"},
+          "sentiment_score": {"type": "NUMBER"},
+          "conclusion": {"type": "STRING"}
+     },
+     "required": ["headline", "impact_analysis", "sentiment_score", "conclusion"]
+}
+
+economic_pre_schema = {
+     "type": "OBJECT",
+     "properties": {
+          "explanation": {"type": "STRING"},
+          "scenario_high": {"type": "STRING"},
+          "scenario_low": {"type": "STRING"}
+     },
+     "required": ["explanation", "scenario_high", "scenario_low"]
+}
