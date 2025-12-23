@@ -30,11 +30,6 @@ def get_ai_service() -> AIService:
 # Initialize Service Global
 ai_service = get_ai_service()
 
-# --- JSON SCHEMAS ---
-
-
-
-
 # --- BUSINESS LOGIC FUNCTIONS (ASYNC) ---
 
 async def analyze_market(

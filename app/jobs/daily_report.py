@@ -98,7 +98,7 @@ def format_telegram_message(data: Dict[str, Any], articles: List[Dict[str, Any]]
         )
     else:
         # Trường hợp WAIT hoặc không có signal
-        strategy_text = "⏳ <b>Thị trường chưa rõ xu hướng, tiếp tục quan sát.</b>"
+        strategy_text = f"⏳ <b>THỊ TRƯỜNG CHƯA RÕ XU HƯỚNG</b>\n▬▬▬▬▬▬▬▬▬▬▬▬\n<i>📝 Lý do: {conclusion}</i>"
 
     message = (
         f"{cta_text}\n\n"
