@@ -136,3 +136,23 @@ WORDPRESS_LIVEBLOG_ID = os.getenv("WORDPRESS_LIVEBLOG_ID", "13092")  # ID của 
 
 # --- TRADING CONFIG ---
 TRADE_VOLUME = float(os.getenv("TRADE_VOLUME", "0.01"))
+
+# Trading Strategy SL/TP Configuration (Unit: USD Price Movement for XAUUSD)
+# These values can be overridden via environment variables
+
+# REPORT Strategy (AI Report Fallback)
+TRADE_REPORT_SL = float(os.getenv("TRADE_REPORT_SL", "10.0"))
+TRADE_REPORT_TP = float(os.getenv("TRADE_REPORT_TP", "20.0"))
+
+# NEWS Strategy (Fast Track)
+TRADE_NEWS_SL = float(os.getenv("TRADE_NEWS_SL", "5.0"))
+TRADE_NEWS_TP = float(os.getenv("TRADE_NEWS_TP", "10.0"))
+
+# SNIPER Strategy (High Impact News)
+TRADE_SNIPER_SL = float(os.getenv("TRADE_SNIPER_SL", "10.0"))
+TRADE_SNIPER_TP = float(os.getenv("TRADE_SNIPER_TP", "20.0"))
+
+# CALENDAR Strategy (Economic Calendar Straddle)
+TRADE_CALENDAR_SL = float(os.getenv("TRADE_CALENDAR_SL", "10.0"))
+TRADE_CALENDAR_TP = float(os.getenv("TRADE_CALENDAR_TP", "20.0"))
+TRADE_CALENDAR_DIST = float(os.getenv("TRADE_CALENDAR_DIST", "2.0"))

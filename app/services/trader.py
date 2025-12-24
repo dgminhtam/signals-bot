@@ -16,6 +16,14 @@ class AutoTrader:
         # Use Config Volume if not provided
         self.volume = volume if volume else config.TRADE_VOLUME
         self.client = MT5DataClient()
+    
+    def _get_points(self, price_delta: float) -> float:
+        """
+        Helper: Convert USD Price Movement to MT5 Points for XAUUSD.
+        XAUUSD has 2 decimal places (e.g., 2650.50).
+        1 USD = 100 Points (e.g., 10.0 USD = 1000.0 Points)
+        """
+        return price_delta * 100.0
         
 
 
@@ -104,19 +112,16 @@ class AutoTrader:
                 return "FAIL_NO_PRICE"
             current_price = df['Close'].iloc[-1]
             
-            # Param cho News
-            SL_PIPS = 10.0
-            TP_PIPS = 20.0
-            
+            # Use NEWS config
             sl = 0.0
             tp = 0.0
             
             if signal_type == "BUY":
-                sl = current_price - SL_PIPS
-                tp = current_price + TP_PIPS
+                sl = current_price - config.TRADE_NEWS_SL
+                tp = current_price + config.TRADE_NEWS_TP
             elif signal_type == "SELL":
-                sl = current_price + SL_PIPS
-                tp = current_price - TP_PIPS
+                sl = current_price + config.TRADE_NEWS_SL
+                tp = current_price - config.TRADE_NEWS_TP
             else:
                  return "WAIT"
 
@@ -174,7 +179,7 @@ class AutoTrader:
         db_sl = signal_data.get('stop_loss')
         db_tp = signal_data.get('take_profit')
         
-        # Determine SL/TP: Use AI values if available, else fallback
+        # Determine SL/TP: Use AI values if available, else fallback to REPORT config
         sl = 0.0
         tp = 0.0
         
@@ -184,17 +189,15 @@ class AutoTrader:
             tp = db_tp
             logger.info(f"📊 Using AI-generated levels: SL={sl:.2f}, TP={tp:.2f}")
         else:
-            # Fallback to calculated levels
-            logger.warning("⚠️ AI SL/TP missing or invalid. Using fallback calculation.")
-            FALLBACK_SL = 5.0
-            FALLBACK_TP = 10.0
+            # Fallback to REPORT config
+            logger.warning("⚠️ AI SL/TP missing or invalid. Using REPORT config fallback.")
             
             if signal_type == "BUY":
-                 sl = current_price - FALLBACK_SL
-                 tp = current_price + FALLBACK_TP
+                 sl = current_price - config.TRADE_REPORT_SL
+                 tp = current_price + config.TRADE_REPORT_TP
             elif signal_type == "SELL":
-                 sl = current_price + FALLBACK_SL
-                 tp = current_price - FALLBACK_TP
+                 sl = current_price + config.TRADE_REPORT_SL
+                 tp = current_price - config.TRADE_REPORT_TP
             else:
                 return "WAIT"
             
@@ -258,18 +261,16 @@ class AutoTrader:
         if score >= 8:
             logger.info(f"⚔️ [OFFENSIVE] High Impact News detected (Score {score}). Preparing Sniper Entry (Fire-and-Forget)...")
             
-            # FAST TRACK: NO MARKET DATA FETCHING
-            # Use relative points for SL/TP (Assuming XAUUSD Standard)
-            # 1000 Points = 100 Pips (if 1 pip = 10 points) ~ $10 Price Move (if 1 point = 0.01)
-            SL_POINTS = 1000.0 
-            TP_POINTS = 2000.0
+            # Use SNIPER config and convert to MT5 Points
+            sl_points = self._get_points(config.TRADE_SNIPER_SL)
+            tp_points = self._get_points(config.TRADE_SNIPER_TP)
             
-            logger.info(f"🚀 SNIPER EXECUTION: {signal_direction} (Rel. Pts - SL: {SL_POINTS}, TP: {TP_POINTS})")
+            logger.info(f"🚀 SNIPER EXECUTION: {signal_direction} (SL: {config.TRADE_SNIPER_SL} USD / {sl_points} pts, TP: {config.TRADE_SNIPER_TP} USD / {tp_points} pts)")
             
             # Call relative execution immediately
             response = await self._retry_action(
                 self.client.execute_order_relative, 
-                self.symbol, signal_direction, self.volume, SL_POINTS, TP_POINTS
+                self.symbol, signal_direction, self.volume, sl_points, tp_points
             )
             
             logger.info(f"   -> Sniper Result: {response}")
@@ -281,7 +282,7 @@ class AutoTrader:
                     # For relative orders, we don't have exact prices yet, save as 0
                     await database.save_trade_entry(
                         ticket, None, self.symbol, signal_direction,
-                        self.volume, 0.0, SL_POINTS, TP_POINTS
+                        self.volume, 0.0, sl_points, tp_points
                     )
                 except Exception as e:
                     logger.error(f"❌ Failed to save SNIPER trade to DB: {e}")
@@ -289,12 +290,22 @@ class AutoTrader:
         else:
             logger.info(f"   -> Score {score} < 8. No automated entry.")
 
-    async def place_straddle_orders(self, distance_pips: float = 20.0, sl_pips: float = 10.0, tp_pips: float = 30.0) -> List[str]:
+    async def place_straddle_orders(self, distance: float = None, sl: float = None, tp: float = None) -> List[str]:
         """
-        Đặt 2 lệnh chờ (Buy Stop / Sell Stop) cách giá hiện tại một khoảng distance_pips.
+        Đặt 2 lệnh chờ (Buy Stop / Sell Stop) cách giá hiện tại một khoảng distance.
         Strategy: News Straddle / Trap Trading.
+        
+        Args:
+            distance: USD price distance from current (default: config.TRADE_CALENDAR_DIST)
+            sl: Stop loss in USD (default: config.TRADE_CALENDAR_SL)
+            tp: Take profit in USD (default: config.TRADE_CALENDAR_TP)
         """
-        logger.info(f"🕸️ Preparing STRADDLE Strategy via MT5 (Dist: {distance_pips} pips)...")
+        # Use CALENDAR config defaults if not provided
+        distance = distance if distance is not None else config.TRADE_CALENDAR_DIST
+        sl = sl if sl is not None else config.TRADE_CALENDAR_SL
+        tp = tp if tp is not None else config.TRADE_CALENDAR_TP
+        
+        logger.info(f"🕸️ Preparing STRADDLE Strategy via MT5 (Distance: {distance} USD, SL: {sl} USD, TP: {tp} USD)...")
         
         # 1. Get Current Market Price
         df, _ = await get_market_data(self.symbol)
@@ -304,31 +315,18 @@ class AutoTrader:
             
         current_price = df['Close'].iloc[-1]
         
-        # Convert Pips to Price (Assuming XAUUSD 0.1 pip or Standard 0.0001)
-        # TODO: Dynamic Pip Value based on Symbol digits. For now XAUUSD ~ 0.1 per pip? 
-        # Actually standard for XAUUSD is 0.01 or 0.1 depending on broker. 
-        # Often 1 pip = 0.1 USD. Let's assume input pips are standard pips.
-        # If symbol is XAUUSD, usually 2 digits -> 0.1 is 1 pip? Or 0.01?
-        # Let's generalize: 1 pip = 10 * Point. If Point=0.01, Pip=0.1.
-        
-        pip_value = 0.1 if "XAU" in self.symbol else 0.0001
-        if "JPY" in self.symbol and "XAU" not in self.symbol: pip_value = 0.01
-        
-        distance_price = distance_pips * pip_value
-        sl_price_dist = sl_pips * pip_value
-        tp_price_dist = tp_pips * pip_value
-        
-        buy_stop_price = current_price + distance_price
-        sell_stop_price = current_price - distance_price
+        # Use USD price directly (no pip conversion needed)
+        buy_stop_price = current_price + distance
+        sell_stop_price = current_price - distance
         
         # Calculate SL/TP
         # Buy Stop: SL below entry, TP above
-        buy_sl = buy_stop_price - sl_price_dist
-        buy_tp = buy_stop_price + tp_price_dist
+        buy_sl = buy_stop_price - sl
+        buy_tp = buy_stop_price + tp
         
         # Sell Stop: SL above entry, TP below
-        sell_sl = sell_stop_price + sl_price_dist
-        sell_tp = sell_stop_price - tp_price_dist
+        sell_sl = sell_stop_price + sl
+        sell_tp = sell_stop_price - tp
         
         tickets = []
         

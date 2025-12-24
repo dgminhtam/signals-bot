@@ -326,7 +326,8 @@ class EconomicCalendarService:
                 # Activate AutoTrader Trap
                 try:
                     trader = AutoTrader("XAUUSD") # Default XAUUSD for News Trap
-                    tickets = await trader.place_straddle_orders(distance_pips=20, sl_pips=10, tp_pips=30)
+                    # Use centralized CALENDAR config (no parameters = use defaults)
+                    tickets = await trader.place_straddle_orders()
                     
                     if tickets:
                         logger.info(f"   ✅ Trap Placed: {tickets}. Scheduling cleanup in 15m.")
