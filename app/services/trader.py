@@ -125,6 +125,60 @@ class AutoTrader:
             else:
                  return "WAIT"
 
+            # ===== SMART POSITION MANAGEMENT =====
+            # Check for opposite positions and close weak NEWS trades
+            logger.info("🔍 Checking for opposite positions...")
+            open_positions = await self.client.get_open_positions(self.symbol)
+            
+            if open_positions:
+                opposite_type = "SELL" if signal_type == "BUY" else "BUY"
+                opposite_positions = [pos for pos in open_positions if pos['type'] == opposite_type]
+                
+                if opposite_positions:
+                    logger.info(f"   -> Found {len(opposite_positions)} opposite {opposite_type} position(s)")
+                    
+                    for pos in opposite_positions:
+                        ticket = pos['ticket']
+                        metadata = await database.get_trade_metadata(ticket)
+                        
+                        # Decision Tree
+                        should_close = False
+                        reason = ""
+                        
+                        if metadata is None:
+                            # No signal metadata (Sniper/Straddle/Manual)
+                            reason = "PROTECTED (Sniper/Straddle/Manual - No Signal ID)"
+                        elif metadata['source'] == 'AI_REPORT':
+                            reason = "PROTECTED (AI_REPORT - Long-term trend)"
+                        elif metadata['source'] == 'NEWS' and metadata['score'] >= 8:
+                            reason = f"PROTECTED (High-impact NEWS - Score {metadata['score']})"
+                        elif metadata['source'] == 'NEWS' and metadata['score'] < 8:
+                            should_close = True
+                            reason = f"CLOSABLE (Weak NEWS - Score {metadata['score']})"
+                        else:
+                            reason = f"PROTECTED (Unknown source: {metadata['source']})"
+                        
+                        logger.info(f"   -> Ticket #{ticket}: {reason}")
+                        
+                        if should_close:
+                            logger.info(f"   ⚔️ Closing opposite weak NEWS position #{ticket}...")
+                            close_result = await self.client.close_order(ticket)
+                            
+                            if "SUCCESS" in close_result:
+                                # Update database status
+                                await database.update_trade_exit(
+                                    ticket=ticket,
+                                    close_price=0.0,  # Actual close price not available from close command
+                                    profit=pos.get('profit', 0.0),
+                                    status='CLOSED'
+                                )
+                                logger.info(f"   ✅ Closed #{ticket} successfully (Profit: {pos.get('profit', 0.0):.2f})")
+                            else:
+                                logger.error(f"   ❌ Failed to close #{ticket}: {close_result}")
+                else:
+                    logger.info("   -> No opposite positions found")
+            else:
+                logger.info("   -> No open positions")
             # Execute via Retry
             logger.info(f"🚀 Executing NEWS {signal_type} | @{current_price:.2f} | SL:{sl} TP:{tp}")
             result = await self._retry_action(self.client.execute_order, self.symbol, signal_type, self.volume, sl, tp)

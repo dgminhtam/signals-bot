@@ -535,3 +535,35 @@ async def update_trade_profit(ticket: int, profit: float) -> bool:
     except Exception as e:
         logger.error(f"❌ Lỗi update_trade_profit: {e}")
         return False
+
+async def get_trade_metadata(ticket: int) -> Optional[Dict[str, Any]]:
+    """
+    Lấy metadata của trade từ signal (JOIN với trade_signals).
+    Trả về {'source': str, 'score': float} nếu có signal_id.
+    Trả về None nếu signal_id là NULL (Sniper/Straddle/Manual).
+    """
+    try:
+        async with get_db_connection() as conn:
+            async with conn.execute('''
+                SELECT ts.source, ts.score
+                FROM trade_history th
+                LEFT JOIN trade_signals ts ON th.signal_id = ts.id
+                WHERE th.ticket = ?
+            ''', (ticket,)) as cursor:
+                row = await cursor.fetchone()
+                
+                if not row:
+                    logger.warning(f"Trade #{ticket} not found in database")
+                    return None
+                
+                # If signal_id was NULL, the JOIN will return NULL for source/score
+                if row['source'] is None:
+                    return None  # No signal metadata (Sniper/Straddle/Manual)
+                
+                return {
+                    'source': row['source'],
+                    'score': row['score'] if row['score'] is not None else 0.0
+                }
+    except Exception as e:
+        logger.error(f"❌ Lỗi get_trade_metadata for ticket {ticket}: {e}")
+        return None
