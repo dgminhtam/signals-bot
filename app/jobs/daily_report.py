@@ -102,20 +102,18 @@ def format_telegram_message(data: Dict[str, Any], articles: List[Dict[str, Any]]
                     return signal[k]
             return None
 
-        symbol = "XAU/USD" # Mặc định
+        symbol = "XAU/USD"
         entry = fmt(get_val(['entry_price', 'entry', 'price']))
         sl = fmt(get_val(['sl', 'stop_loss', 'stoploss', 'SL']))
         tp1 = fmt(get_val(['tp1', 'tp', 'take_profit', 'TP1', 'target1']))
         tp2 = fmt(get_val(['tp2', 'TP2', 'target2']))
         
         strategy_text = (
-            f"🎯 <b>CHIẾN LƯỢC GIAO DỊCH</b>\n"
-            f"▬▬▬▬▬▬▬▬▬▬▬▬\n"
+            f"🎯 <b>GỢI Ý GIAO DỊCH</b>\n"
             f"<b>🚀 {order_type} {symbol} {entry}</b>\n"
             f"🛑 <b>Stoploss:</b> {sl}\n"
             f"✅ <b>TP1:</b> {tp1}\n"
             f"✅ <b>TP2:</b> {tp2}\n"
-            f"▬▬▬▬▬▬▬▬▬▬▬▬\n"
             f"<i>(Khuyến nghị: Quản lý vốn 1-2%)</i>"
         )
     else:
