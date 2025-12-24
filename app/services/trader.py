@@ -190,20 +190,34 @@ class AutoTrader:
                   return "WAIT_LOW_VOLUME"
         except: pass
         
-        # SL/TP Calculation (Standard)
-        FALLBACK_SL = 5.0
-        FALLBACK_TP = 10.0
+        # Extract AI-generated SL/TP from database
+        db_entry = signal_data.get('entry_price')
+        db_sl = signal_data.get('stop_loss')
+        db_tp = signal_data.get('take_profit')
+        
+        # Determine SL/TP: Use AI values if available, else fallback
         sl = 0.0
         tp = 0.0
         
-        if signal_type == "BUY":
-             sl = current_price - FALLBACK_SL
-             tp = current_price + FALLBACK_TP
-        elif signal_type == "SELL":
-             sl = current_price + FALLBACK_SL
-             tp = current_price - FALLBACK_TP
+        if db_sl and db_tp and db_sl != 0 and db_tp != 0:
+            # Use AI-generated levels
+            sl = db_sl
+            tp = db_tp
+            logger.info(f"📊 Using AI-generated levels: SL={sl:.2f}, TP={tp:.2f}")
         else:
-            return "WAIT"
+            # Fallback to calculated levels
+            logger.warning("⚠️ AI SL/TP missing or invalid. Using fallback calculation.")
+            FALLBACK_SL = 5.0
+            FALLBACK_TP = 10.0
+            
+            if signal_type == "BUY":
+                 sl = current_price - FALLBACK_SL
+                 tp = current_price + FALLBACK_TP
+            elif signal_type == "SELL":
+                 sl = current_price + FALLBACK_SL
+                 tp = current_price - FALLBACK_TP
+            else:
+                return "WAIT"
             
         logger.info(f"🚀 Executing AI {signal_type} (Verified) | Vol: {self.volume}")
         result = await self._retry_action(self.client.execute_order, self.symbol, signal_type, self.volume, sl, tp)

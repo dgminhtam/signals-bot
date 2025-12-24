@@ -232,12 +232,38 @@ async def main():
             tr_type = tr_signal.get('order_type', 'WAIT').upper()
             if tr_type in ['BUY', 'SELL']:
                 logger.info(f"🔄 Syncing signal {tr_type} to AutoTrader...")
+                
+                # Extract AI-generated price levels
+                ai_entry = tr_signal.get('entry_price') or tr_signal.get('entry')
+                ai_sl = tr_signal.get('sl') or tr_signal.get('stop_loss')
+                ai_tp = tr_signal.get('tp1') or tr_signal.get('take_profit')
+                
+                # Convert to float if string
+                try:
+                    ai_entry = float(ai_entry) if ai_entry else None
+                except (ValueError, TypeError):
+                    ai_entry = None
+                    
+                try:
+                    ai_sl = float(ai_sl) if ai_sl else None
+                except (ValueError, TypeError):
+                    ai_sl = None
+                    
+                try:
+                    ai_tp = float(ai_tp) if ai_tp else None
+                except (ValueError, TypeError):
+                    ai_tp = None
+                
                 await database.save_trade_signal(
                     symbol="XAUUSD",
                     signal_type=tr_type,
                     source="AI_REPORT",
-                    score=analysis_result.get('sentiment_score', 0)
+                    score=analysis_result.get('sentiment_score', 0),
+                    entry=ai_entry,
+                    sl=ai_sl,
+                    tp=ai_tp
                 )
+                logger.info(f"   📊 AI Levels - Entry: {ai_entry}, SL: {ai_sl}, TP: {ai_tp}")
             
             # Đánh dấu tin đã đọc
             if articles:

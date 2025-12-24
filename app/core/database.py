@@ -98,13 +98,25 @@ async def init_db() -> None:
                     source TEXT,      -- NEWS, AI_REPORT
                     score REAL,
                     is_processed INTEGER DEFAULT 0,
+                    entry_price REAL,
+                    stop_loss REAL,
+                    take_profit REAL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
             
-            # Migration: Add is_processed column if not exists
+            # Migration: Add columns if not exists
             try:
                 await conn.execute("ALTER TABLE trade_signals ADD COLUMN is_processed INTEGER DEFAULT 0")
+            except Exception: pass
+            try:
+                await conn.execute("ALTER TABLE trade_signals ADD COLUMN entry_price REAL")
+            except Exception: pass
+            try:
+                await conn.execute("ALTER TABLE trade_signals ADD COLUMN stop_loss REAL")
+            except Exception: pass
+            try:
+                await conn.execute("ALTER TABLE trade_signals ADD COLUMN take_profit REAL")
             except Exception: pass
             
             await conn.commit()
@@ -340,13 +352,13 @@ async def check_recent_high_impact_news(minutes: int = 15) -> Optional[str]:
         logger.error(f"Lỗi check recent news: {e}")
         return None
 
-async def save_trade_signal(symbol: str, signal_type: str, source: str, score: float) -> bool:
+async def save_trade_signal(symbol: str, signal_type: str, source: str, score: float, entry: float = None, sl: float = None, tp: float = None) -> bool:
     try:
         async with get_db_connection() as conn:
             await conn.execute('''
-                INSERT INTO trade_signals (symbol, signal_type, source, score)
-                VALUES (?, ?, ?, ?)
-            ''', (symbol, signal_type, source, score))
+                INSERT INTO trade_signals (symbol, signal_type, source, score, entry_price, stop_loss, take_profit)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (symbol, signal_type, source, score, entry, sl, tp))
             await conn.commit()
             return True
     except Exception as e:
