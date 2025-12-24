@@ -86,31 +86,40 @@ def format_telegram_message(data: Dict[str, Any], articles: List[Dict[str, Any]]
     if order_type in ['BUY', 'SELL']:
         # Format số đẹp (bỏ số 0 vô nghĩa)
         def fmt(val):
-            return f"{float(val):g}" if val is not None else "N/A"
+            if val is None: return "N/A"
+            try:
+                # Nếu là string số (VD: "2700") -> float -> format
+                # Nếu text thường (VD: "2700-2705") -> giữ nguyên
+                f_val = float(val) 
+                return f"{f_val:g}"
+            except ValueError:
+                return str(val)
+
+        # Helper tìm value theo nhiều key
+        def get_val(keys):
+            for k in keys:
+                if k in signal and signal[k] is not None:
+                    return signal[k]
+            return None
 
         symbol = "XAU/USD" # Mặc định
-        entry = fmt(signal.get('entry_price'))
-        sl = fmt(signal.get('sl'))
-        tp1 = fmt(signal.get('tp1'))
-        tp2 = fmt(signal.get('tp2'))
+        entry = fmt(get_val(['entry_price', 'entry', 'price']))
+        sl = fmt(get_val(['sl', 'stop_loss', 'stoploss', 'SL']))
+        tp1 = fmt(get_val(['tp1', 'tp', 'take_profit', 'TP1', 'target1']))
+        tp2 = fmt(get_val(['tp2', 'TP2', 'target2']))
         
         strategy_text = (
-            f"🎯 <b>CHIẾN LƯỢC GIAO DỊCH</b>\n"
-            f"▬▬▬▬▬▬▬▬▬▬▬▬\n"
-            f"<b>🚀 {order_type} {symbol}</b>\n"
-            f"👉 <b>Entry:</b> {entry}\n"
-            f"🛑 <b>Stoploss:</b> {sl}\n"
+            f"🎯 <b>GỢI Ý GIAO DỊCH</b>\n"
+            f"<b>🚀 {order_type} {symbol} {entry}</b>\n"
+            f"🛑 <b>SL:</b> {sl}\n"
             f"✅ <b>TP1:</b> {tp1}\n"
             f"✅ <b>TP2:</b> {tp2}\n"
-            f"▬▬▬▬▬▬▬▬▬▬▬▬\n"
-            f"<i>📝 Lý do: {reason}</i>\n"
             f"<i>(Khuyến nghị: Quản lý vốn 1-2%)</i>"
         )
     else:
         # Trường hợp WAIT hoặc không có signal
         strategy_text = (
             f"⏳ <b>THỊ TRƯỜNG CHƯA RÕ XU HƯỚNG (WAIT)</b>\n"
-            f"▬▬▬▬▬▬▬▬▬▬▬▬\n"
             f"📝 <b>Lý do:</b> {reason}"
         )
 

@@ -67,7 +67,11 @@ Trả về JSON theo schema đã định nghĩa với các lưu ý sau:
 - trend: Chính xác là "BULLISH 🟢", "BEARISH 🔴", hoặc "SIDEWAY 🟡".
 - bullet_points: 3 gạch đầu dòng quan trọng nhất (Nguyên nhân -> Kết quả). Dùng động từ mạnh. CHỈ ĐƯA TIN MỚI.
 - conclusion: Tóm tắt ngắn gọn LÝ DO vào lệnh hoặc đứng ngoài (1-2 câu). TUYỆT ĐỐI KHÔNG viết lại các mức giá Entry/SL/TP ở đây (vì đã có trong trade_signal). Tập trung vào phân tích.
-- trade_signal: Object chứa thông số giao dịch. Nếu phân vân, hãy chọn order_type là 'WAIT'. Nếu có tín hiệu rõ ràng, order_type PHẢI là 'BUY' hoặc 'SELL' (không thêm chữ khác).
+- trade_signal: Object chứa thông số giao dịch.
+  + Nếu phân vân: order_type = "WAIT".
+  + Nếu giá hiện tại khớp vùng mua/bán: order_type = "BUY NOW" hoặc "SELL NOW".
+  + Nếu chờ hồi quy (Retracement): order_type = "BUY LIMIT" hoặc "SELL LIMIT".
+  + BẮT BUỘC sử dụng đúng tên keys: 'order_type', 'entry_price', 'sl', 'tp1', 'tp2'. Không tự ý đổi thành 'stop_loss' hay 'tp'.
 - sentiment_score: Từ -10 (Cực xấu cho Gold) đến +10 (Cực tốt cho Gold). 0 là trung lập.
 """
 
@@ -149,7 +153,7 @@ analysis_schema = {
           "trade_signal": {
                 "type": "OBJECT",
                 "properties": {
-                    "order_type": {"type": "STRING", "description": "BUY/SELL/WAIT"},
+                    "order_type": {"type": "STRING", "description": "BUY NOW/BUY LIMIT/SELL NOW/SELL LIMIT/WAIT"},
                     "entry_price": {"type": "NUMBER"},
                     "sl": {"type": "NUMBER"},
                     "tp1": {"type": "NUMBER", "description": "Mức chốt lời an toàn (Target 1)"},
