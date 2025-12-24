@@ -565,5 +565,5 @@ async def get_trade_metadata(ticket: int) -> Optional[Dict[str, Any]]:
                     'score': row['score'] if row['score'] is not None else 0.0
                 }
     except Exception as e:
-        logger.error(f"❌ Lỗi get_trade_metadata for ticket {ticket}: {e}")
+        logger.error(f"❌ Lỗi get_trade_metadata for ticket {ticket}: {e}.")
         return None
