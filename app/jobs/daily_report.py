@@ -111,7 +111,7 @@ def format_telegram_message(data: Dict[str, Any], articles: List[Dict[str, Any]]
         strategy_text = (
             f"🎯 <b>GỢI Ý GIAO DỊCH</b>\n"
             f"<b>🚀 {order_type} {symbol} {entry}</b>\n"
-            f"🛑 <b>Stoploss:</b> {sl}\n"
+            f"🛑 <b>SL:</b> {sl}\n"
             f"✅ <b>TP1:</b> {tp1}\n"
             f"✅ <b>TP2:</b> {tp2}\n"
             f"<i>(Khuyến nghị: Quản lý vốn 1-2%)</i>"
