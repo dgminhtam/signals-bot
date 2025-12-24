@@ -119,6 +119,26 @@ async def init_db() -> None:
                 await conn.execute("ALTER TABLE trade_signals ADD COLUMN take_profit REAL")
             except Exception: pass
             
+            # Tạo bảng trade_history
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS trade_history (
+                    ticket INTEGER PRIMARY KEY,
+                    signal_id INTEGER,
+                    symbol TEXT,
+                    order_type TEXT,
+                    volume REAL,
+                    open_price REAL,
+                    sl REAL,
+                    tp REAL,
+                    close_price REAL,
+                    profit REAL,
+                    status TEXT DEFAULT 'OPEN',
+                    open_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    close_time TIMESTAMP,
+                    FOREIGN KEY (signal_id) REFERENCES trade_signals(id)
+                )
+            ''')
+            
             await conn.commit()
     except Exception as e:
         logger.error(f"Lỗi khởi tạo DB: {e}")
@@ -446,3 +466,72 @@ async def get_events_for_trap(min_minutes: float = 1.6, max_minutes: float = 2.4
     except Exception as e:
         logger.error(f"Lỗi get_events_for_trap: {e}")
         return []
+
+# --- Trade History Database Methods (Async) ---
+async def save_trade_entry(ticket: int, signal_id: Optional[int], symbol: str, order_type: str, 
+                           volume: float, open_price: float, sl: float, tp: float) -> bool:
+    """
+    Lưu trade mới vào database khi order được thực thi thành công.
+    Status mặc định là 'OPEN'.
+    """
+    try:
+        async with get_db_connection() as conn:
+            await conn.execute('''
+                INSERT INTO trade_history (ticket, signal_id, symbol, order_type, volume, 
+                                          open_price, sl, tp, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'OPEN')
+            ''', (ticket, signal_id, symbol, order_type, volume, open_price, sl, tp))
+            await conn.commit()
+            logger.info(f"💾 Saved trade to DB: Ticket #{ticket} ({order_type} {symbol})")
+            return True
+    except Exception as e:
+        logger.error(f"❌ Lỗi save_trade_entry: {e}")
+        return False
+
+async def get_open_trades() -> List[Dict[str, Any]]:
+    """
+    Lấy tất cả các trade đang mở (status='OPEN')
+    """
+    try:
+        async with get_db_connection() as conn:
+            async with conn.execute('''
+                SELECT * FROM trade_history WHERE status = 'OPEN'
+            ''') as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+    except Exception as e:
+        logger.error(f"Lỗi get_open_trades: {e}")
+        return []
+
+async def update_trade_exit(ticket: int, close_price: float, profit: float, status: str = 'CLOSED') -> bool:
+    """
+    Cập nhật thông tin khi trade đóng.
+    """
+    try:
+        async with get_db_connection() as conn:
+            await conn.execute('''
+                UPDATE trade_history 
+                SET close_price = ?, profit = ?, status = ?, close_time = CURRENT_TIMESTAMP
+                WHERE ticket = ?
+            ''', (close_price, profit, status, ticket))
+            await conn.commit()
+            logger.info(f"💾 Updated trade exit: Ticket #{ticket} (Profit: {profit:.2f})")
+            return True
+    except Exception as e:
+        logger.error(f"❌ Lỗi update_trade_exit: {e}")
+        return False
+
+async def update_trade_profit(ticket: int, profit: float) -> bool:
+    """
+    Cập nhật floating profit cho trade đang mở.
+    """
+    try:
+        async with get_db_connection() as conn:
+            await conn.execute('''
+                UPDATE trade_history SET profit = ? WHERE ticket = ?
+            ''', (profit, ticket))
+            await conn.commit()
+            return True
+    except Exception as e:
+        logger.error(f"❌ Lỗi update_trade_profit: {e}")
+        return False

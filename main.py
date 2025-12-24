@@ -23,6 +23,7 @@ from app.services import news_crawler
 from app.jobs import daily_report
 from app.jobs import realtime_alert
 from app.jobs import economic_worker
+from app.jobs import trade_monitor
 from app.services.trader import AutoTrader
 
 logger = config.logger
@@ -138,6 +139,10 @@ async def start_scheduler():
     # --- AUTO TRADER (Each Hour at :02) ---
     logger.info("🤖 Thiết lập Auto Trader: Chạy mỗi giờ (phút 02)")
     scheduler.add_job(job_auto_trade, CronTrigger(minute='2'), max_instances=1, coalesce=True)
+    
+    # --- TRADE MONITOR (5 minutes) ---
+    logger.info("💾 Thiết lập Trade Monitor: Sync trade status mỗi 5 phút")
+    scheduler.add_job(trade_monitor.main, IntervalTrigger(minutes=5), max_instances=1, coalesce=True)
     
     logger.info(f"✅ Đã thiết lập jobs.")
     logger.info("♾️  Bắt đầu vòng lặp sự kiện (Event Loop)...")
