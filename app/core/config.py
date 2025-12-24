@@ -106,7 +106,27 @@ def setup_logging():
     )
     return logging.getLogger("AppLogger")
 
+    return logging.getLogger("AppLogger")
+
 logger = setup_logging()
+
+# --- TRADE LOGGING SETUP ---
+TRADE_LOG_FILE = os.path.join(LOGS_DIR, "trades.log")
+
+def setup_trade_logging():
+    """Thiết lập logging RIÊNG cho Trade History"""
+    t_logger = logging.getLogger("TradeLogger")
+    t_logger.setLevel(logging.INFO)
+    t_logger.propagate = False # QUAN TRỌNG: Không đẩy log lên root (tránh duplicate APP log)
+    
+    # Chỉ ghi ra file trades.log
+    handler = logging.FileHandler(TRADE_LOG_FILE, encoding='utf-8')
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    t_logger.addHandler(handler)
+    
+    return t_logger
+
+trade_logger = setup_trade_logging()
 
 # WordPress Config
 WORDPRESS_URL = os.getenv("WORDPRESS_URL")

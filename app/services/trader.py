@@ -9,6 +9,7 @@ from app.core import database
 from app.core import config
 
 logger = config.logger
+trade_logger = config.trade_logger
 
 class AutoTrader:
     def __init__(self, symbol="XAUUSD", volume=None):
@@ -17,6 +18,33 @@ class AutoTrader:
         self.volume = volume if volume else config.TRADE_VOLUME
         self.client = MT5DataClient()
         
+    def _log_execution(self, mode: str, type_str: str, vol: float, price: float, sl: float, tp: float, response: str):
+        """
+        Ghi log giao dịch vào file trades.log
+        Format: TIME | MODE | SYMBOL | TYPE | VOL | PRICE | SL | TP | RESULT | TICKET | RAW_RESPONSE
+        """
+        try:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # Determine Result & Ticket
+            result = "FAIL"
+            ticket = "N/A"
+            
+            if "SUCCESS" in response:
+                result = "SUCCESS"
+                parts = response.split("|")
+                if len(parts) > 1:
+                    ticket = parts[1]
+            
+            log_line = (
+                f"{timestamp} | {mode} | {self.symbol} | {type_str} | {vol} | "
+                f"{price:.2f} | {sl:.2f} | {tp:.2f} | {result} | {ticket} | {response}"
+            )
+            
+            trade_logger.info(log_line)
+        except Exception as e:
+            logger.error(f"❌ Error writing to Trade Log: {e}")
+
     async def _retry_action(self, func, *args, max_retries=3, delay=1.0):
         """
         Helper thực hiện retry nếu gặp lỗi hoặc phản hồi FAIL (Async)
@@ -119,7 +147,13 @@ class AutoTrader:
 
             # Execute via Retry
             logger.info(f"🚀 Executing NEWS {signal_type} | @{current_price:.2f} | SL:{sl} TP:{tp}")
-            return await self._retry_action(self.client.execute_order, self.symbol, signal_type, self.volume, sl, tp)
+            result = await self._retry_action(self.client.execute_order, self.symbol, signal_type, self.volume, sl, tp)
+            
+            # LOGGING
+            self._log_execution(
+                "NEWS_FAST", signal_type, self.volume, current_price, sl, tp, result
+            )
+            return result
 
         # ===== CASE B: AI REPORT SIGNAL (NORMAL TRACK) =====
         upcoming_news = await database.check_upcoming_high_impact_news(minutes=30)
@@ -165,7 +199,13 @@ class AutoTrader:
             return "WAIT"
             
         logger.info(f"🚀 Executing AI {signal_type} (Verified) | Vol: {self.volume}")
-        return await self._retry_action(self.client.execute_order, self.symbol, signal_type, self.volume, sl, tp)
+        result = await self._retry_action(self.client.execute_order, self.symbol, signal_type, self.volume, sl, tp)
+        
+        # LOGGING
+        self._log_execution(
+            "AI_REPORT", signal_type, self.volume, current_price, sl, tp, result
+        )
+        return result
 
     async def process_news_signal(self, news_data: dict):
         """
@@ -222,6 +262,11 @@ class AutoTrader:
             )
             
             logger.info(f"   -> Sniper Result: {response}")
+            
+            # LOGGING
+            self._log_execution(
+                "SNIPER", signal_direction, self.volume, 0.0, SL_POINTS, TP_POINTS, response
+            )
             
         else:
             logger.info(f"   -> Score {score} < 8. No automated entry.")
@@ -280,6 +325,11 @@ class AutoTrader:
             logger.info(f"     ✅ BUY STOP Placed: #{ticket}")
         else:
              logger.error(f"     ❌ BUY STOP Failed: {res_buy}")
+        
+        # LOGGING BUY STOP
+        self._log_execution(
+            "STRADDLE", "BUY_STOP", self.volume, buy_stop_price, buy_sl, buy_tp, res_buy
+        )
              
         # 3. Place SELL STOP
         logger.info(f"   -> Placing SELL STOP @ {sell_stop_price:.2f} (SL: {sell_sl:.2f}, TP: {sell_tp:.2f})")
@@ -292,6 +342,11 @@ class AutoTrader:
              logger.info(f"     ✅ SELL STOP Placed: #{ticket}")
         else:
              logger.error(f"     ❌ SELL STOP Failed: {res_sell}")
+        
+        # LOGGING SELL STOP
+        self._log_execution(
+            "STRADDLE", "SELL_STOP", self.volume, sell_stop_price, sell_sl, sell_tp, res_sell
+        )
              
         return tickets
 
