@@ -227,6 +227,18 @@ async def main():
                 signal_data=analysis_result.get('trade_signal')
             )
             
+            # Bridge -> AutoTrader
+            tr_signal = analysis_result.get('trade_signal', {})
+            tr_type = tr_signal.get('order_type', 'WAIT').upper()
+            if tr_type in ['BUY', 'SELL']:
+                logger.info(f"🔄 Syncing signal {tr_type} to AutoTrader...")
+                await database.save_trade_signal(
+                    symbol="XAUUSD",
+                    signal_type=tr_type,
+                    source="AI_REPORT",
+                    score=analysis_result.get('sentiment_score', 0)
+                )
+            
             # Đánh dấu tin đã đọc
             if articles:
                 article_ids = [art['id'] for art in articles]

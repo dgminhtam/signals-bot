@@ -116,8 +116,9 @@ class AutoTrader:
         source = signal_data.get('source', 'UNKNOWN')
         signal_type = signal_data.get('signal_type', 'WAIT')
         score = signal_data.get('score', 0)
+        signal_id = signal_data.get('id')
         
-        logger.info(f"📥 Received Signal: {signal_type} from {source} (Score: {score})")
+        logger.info(f"📥 Received Signal: {signal_type} from {source} (Score: {score}, ID: {signal_id})")
         
         # ===== CASE A: NEWS SIGNAL (FAST TRACK) =====
         if source == 'NEWS':
@@ -153,6 +154,12 @@ class AutoTrader:
             self._log_execution(
                 "NEWS_FAST", signal_type, self.volume, current_price, sl, tp, result
             )
+            
+            # Mark as processed
+            if signal_id and "SUCCESS" in result:
+                await database.mark_signal_processed(signal_id)
+                logger.info(f"✅ Signal #{signal_id} marked as processed.")
+            
             return result
 
         # ===== CASE B: AI REPORT SIGNAL (NORMAL TRACK) =====
@@ -205,6 +212,12 @@ class AutoTrader:
         self._log_execution(
             "AI_REPORT", signal_type, self.volume, current_price, sl, tp, result
         )
+        
+        # Mark as processed
+        if signal_id and "SUCCESS" in result:
+            await database.mark_signal_processed(signal_id)
+            logger.info(f"✅ Signal #{signal_id} marked as processed.")
+        
         return result
 
     async def process_news_signal(self, news_data: dict):

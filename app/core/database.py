@@ -97,9 +97,15 @@ async def init_db() -> None:
                     signal_type TEXT, -- BUY/SELL/WAIT
                     source TEXT,      -- NEWS, AI_REPORT
                     score REAL,
+                    is_processed INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
+            
+            # Migration: Add is_processed column if not exists
+            try:
+                await conn.execute("ALTER TABLE trade_signals ADD COLUMN is_processed INTEGER DEFAULT 0")
+            except Exception: pass
             
             await conn.commit()
     except Exception as e:
@@ -355,6 +361,7 @@ async def get_latest_valid_signal(symbol: str, ttl_minutes: int = 60) -> Optiona
                 SELECT * FROM trade_signals
                 WHERE symbol = ? 
                 AND source = 'NEWS'
+                AND is_processed = 0
                 AND created_at >= datetime('now', ?)
                 ORDER BY created_at DESC
                 LIMIT 1
@@ -367,6 +374,7 @@ async def get_latest_valid_signal(symbol: str, ttl_minutes: int = 60) -> Optiona
                 SELECT * FROM trade_signals
                 WHERE symbol = ? 
                 AND source = 'AI_REPORT'
+                AND is_processed = 0
                 AND created_at >= datetime('now', ?)
                 ORDER BY created_at DESC
                 LIMIT 1
@@ -378,6 +386,19 @@ async def get_latest_valid_signal(symbol: str, ttl_minutes: int = 60) -> Optiona
     except Exception as e:
         logger.error(f"Lỗi get_latest_valid_signal: {e}")
         return None
+
+async def mark_signal_processed(signal_id: int) -> bool:
+    """
+    Đánh dấu signal đã được xử lý (processed) để tránh duplicate execution.
+    """
+    try:
+        async with get_db_connection() as conn:
+            await conn.execute("UPDATE trade_signals SET is_processed = 1 WHERE id = ?", (signal_id,))
+            await conn.commit()
+            return True
+    except Exception as e:
+        logger.error(f"Lỗi mark_signal_processed: {e}")
+        return False
 
 async def get_events_for_trap(min_minutes: float = 1.6, max_minutes: float = 2.4) -> List[Dict[str, Any]]:
     """
