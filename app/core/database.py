@@ -536,6 +536,22 @@ async def update_trade_profit(ticket: int, profit: float) -> bool:
         logger.error(f"❌ Lỗi update_trade_profit: {e}")
         return False
 
+async def update_trade_entry_price(ticket: int, open_price: float) -> bool:
+    """
+    Cập nhật Open Price (dùng cho lệnh Sniper/Relative khi entry ban đầu là 0).
+    """
+    try:
+        async with get_db_connection() as conn:
+            await conn.execute('''
+                UPDATE trade_history SET open_price = ? WHERE ticket = ?
+            ''', (open_price, ticket))
+            await conn.commit()
+            logger.info(f"💾 Updated trade entry: Ticket #{ticket} (Price: {open_price})")
+            return True
+    except Exception as e:
+        logger.error(f"❌ Lỗi update_trade_entry_price: {e}")
+        return False
+
 async def get_trade_metadata(ticket: int) -> Optional[Dict[str, Any]]:
     """
     Lấy metadata của trade từ signal (JOIN với trade_signals).

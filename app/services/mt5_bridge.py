@@ -215,3 +215,28 @@ class MT5DataClient:
         """
         command = f"DELETE|{ticket}"
         return await self._send_simple_command(command)
+
+    async def get_trade_history(self, ticket: int) -> Optional[Dict]:
+        """
+        Lấy thông tin lệnh đã đóng từ lịch sử: HISTORY|TICKET
+        Trả về: {'close_price': float, 'profit': float, 'status': 'CLOSED'} hoặc None
+        """
+        command = f"HISTORY|{ticket}"
+        try:
+            response = await self._send_simple_command(command)
+            
+            # Xử lý response: "SUCCESS|CLOSE_PRICE|TOTAL_PROFIT"
+            if response and response.startswith("SUCCESS"):
+                parts = response.split("|")
+                if len(parts) >= 3:
+                    return {
+                        'close_price': float(parts[1]),
+                        'profit': float(parts[2]),
+                        'status': 'CLOSED'
+                    }
+            
+            return None
+            
+        except Exception as e:
+            print(f"❌ Error getting trade history for {ticket}: {e}")
+            return None
