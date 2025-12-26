@@ -188,7 +188,16 @@ class MT5DataClient:
             for item in items:
                 if not item.strip(): continue
                 parts = item.split(",")
-                if len(parts) >= 4:
+                if len(parts) >= 5:
+                    pos = {
+                        "ticket": int(parts[0]),
+                        "type": "BUY" if int(parts[1]) == 0 else "SELL",
+                        "open_price": float(parts[2]),
+                        "volume": float(parts[3]),
+                        "profit": float(parts[4])
+                    }
+                    positions.append(pos)
+                elif len(parts) >= 4: # Fallback for old version
                     pos = {
                         "ticket": int(parts[0]),
                         "type": "BUY" if int(parts[1]) == 0 else "SELL",

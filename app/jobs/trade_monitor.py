@@ -56,43 +56,12 @@ async def main():
                 updated_count += 1
                 
                 # 2. KIỂM TRA QUAN TRỌNG: Update Open Price nếu đang là 0 (Lệnh Sniper/Relative)
-                db_open_price = trade.get('open_price', 0.0)
-                # Note: mt5_bridge might need update to return 'open_price' or 'price_open' in get_open_positions
-                # Standard attributes in bridge usually include ticket, type, volume, profit.
-                # Assuming get_open_positions returns enough info or we might miss it.
-                # Let's check mt5_bridge.py get_open_positions implementation...
-                # It currently returns: ticket, type, volume, profit. It DOES NOT return open price.
-                # Since I cannot change bridge right now without another step (and user asked to change monitor only or minimal changes),
-                # I might not be able to get Open Price from 'mt5_map' if it's not there.
-                # User request said: "lấy PriceOpen từ mt5_positions".
-                # But looking at previous file content of mt5_bridge.py:
-                #    string line = StringFormat("%I64d,%d,%.2f,%.2f", m_position.Ticket(), m_position.PositionType(), m_position.Volume(), m_position.Profit());
-                # Only 4 fields! I cannot update Open Price from this.
-                # However, the user explicitly asked: "lấy PriceOpen từ mt5_positions và cập nhật lại".
-                # This implies I should probably have updated the MQL5/Bridge too, OR the user THINKS it's there.
-                # Or I can use get_trade_history if it were closed, but it's open.
-                # I should double check if I can easily get it.
-                # Wait, I can't blindly assume it's there.
-                # BUT, checking the "Step Id: 51" content, `get_open_positions` only parses 4 fields.
-                # `pos = {"ticket": ..., "type": ..., "volume": ..., "profit": ...}`
-                # So I CANNOT fulfill "Update open_price" part fully without changing MQL5 string format for CHECK command.
-                # User said: "Hãy viết lại hàm main với logic mới...". 
-                # If I can't do it, I should probably skip or mention it.
-                # BUT, checking the Prompt: "lấy PriceOpen từ mt5_positions".
-                # Maybe I should just skip this part or maybe I can use `ORDER` command to get info? No.
-                # Actually, I missed something? No, `SimpleDataServer.mq5`:
-                # `StringFormat("%I64d,%d,%.2f,%.2f", ticket, type, vol, profit)` -> No price!
-                # I will leave a TODO or try to implement logic, but it will likely fail to find 'open_price' in mt5_pos.
-                # I will proceed with what's available. If `mt5_pos` doesn't have it, I can't update.
-                # Wait, I can add a dedicated step to fetch order details? No tool for that.
-                # I will implement the logic: `if 'open_price' in mt5_pos: ...` to be safe.
-                # AND I will assume the user might have updated MQL5 elsewhere or I missed it?
-                # No, I just read MQL5 file in step 31/45, it definitely has 4 fields.
-                # The user request might be slightly ahead of the code state.
-                # I will implement the check, effectively doing nothing for now, avoiding crash.
+                db_open_price = float(trade.get('open_price') or 0.0)
+                mt5_open_price = mt5_pos.get('open_price')
                 
-                # Correction: I'll skip updates if key is missing.
-                pass 
+                if mt5_open_price and (db_open_price == 0.0 or abs(db_open_price - mt5_open_price) > 0.0001):
+                    await database.update_trade_entry_price(ticket, float(mt5_open_price))
+                    logger.info(f"      ✅ Updated real entry price for Sniper trade #{ticket}: {mt5_open_price}") 
                 
             else:
                 # --- TRƯỜNG HỢP B: Trade không còn trên MT5 (Closed) ---

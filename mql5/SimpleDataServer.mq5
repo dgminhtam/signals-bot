@@ -315,8 +315,8 @@ string CheckPositions(string symbol) {
       if(m_position.SelectByIndex(i)) {
          string pos_sym = m_position.Symbol();
          if(symbol == "ALL" || pos_sym == symbol) {
-            string line = StringFormat("%I64d,%d,%.2f,%.2f", 
-               m_position.Ticket(), m_position.PositionType(), m_position.Volume(), m_position.Profit());
+            string line = StringFormat("%I64d,%d,%.5f,%.2f,%.2f", 
+               m_position.Ticket(), m_position.PositionType(), m_position.PriceOpen(), m_position.Volume(), m_position.Profit());
             result += line + ";";
          }
       }
