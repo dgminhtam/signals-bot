@@ -334,7 +334,7 @@ async def get_gold_news(lookback_minutes: Optional[int] = None, fast_mode: bool 
                 pub_str = getattr(entry, "published", getattr(entry, "updated", ""))
 
             if not link or not title: continue
-            
+            logger.info(f"🔍 Checking: {title[:30]}...")
             # DB Check: Async call
             exists = await database.check_article_exists(link)
             if exists:
