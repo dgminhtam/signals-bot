@@ -179,9 +179,9 @@ class AutoTrader:
                     logger.info("   -> No opposite positions found")
             else:
                 logger.info("   -> No open positions")
-            # Execute via Retry
-            logger.info(f"🚀 Executing NEWS {signal_type} | @{current_price:.2f} | SL:{sl} TP:{tp}")
-            result = await self._retry_action(self.client.execute_order, self.symbol, signal_type, self.volume, sl, tp)
+            # Execute via Retry (Use NEWS volume)
+            logger.info(f"🚀 Executing NEWS {signal_type} | @{current_price:.2f} | SL:{sl} TP:{tp} | Vol:{config.TRADE_NEWS_VOLUME}")
+            result = await self._retry_action(self.client.execute_order, self.symbol, signal_type, config.TRADE_NEWS_VOLUME, sl, tp)
             
             # Save to Database & Mark as processed
             if signal_id and "SUCCESS" in result:
@@ -190,7 +190,7 @@ class AutoTrader:
                     ticket = int(result.split("|")[1])
                     await database.save_trade_entry(
                         ticket, signal_id, self.symbol, signal_type, 
-                        self.volume, current_price, sl, tp
+                        config.TRADE_NEWS_VOLUME, current_price, sl, tp
                     )
                 except Exception as e:
                     logger.error(f"❌ Failed to save trade to DB: {e}")
@@ -255,8 +255,8 @@ class AutoTrader:
             else:
                 return "WAIT"
             
-        logger.info(f"🚀 Executing AI {signal_type} (Verified) | Vol: {self.volume}")
-        result = await self._retry_action(self.client.execute_order, self.symbol, signal_type, self.volume, sl, tp)
+        logger.info(f"🚀 Executing AI {signal_type} (Verified) | Vol: {config.TRADE_REPORT_VOLUME}")
+        result = await self._retry_action(self.client.execute_order, self.symbol, signal_type, config.TRADE_REPORT_VOLUME, sl, tp)
         
         # Save to Database & Mark as processed
         if signal_id and "SUCCESS" in result:
@@ -265,7 +265,7 @@ class AutoTrader:
                 ticket = int(result.split("|")[1])
                 await database.save_trade_entry(
                     ticket, signal_id, self.symbol, signal_type,
-                    self.volume, current_price, sl, tp
+                    config.TRADE_REPORT_VOLUME, current_price, sl, tp
                 )
             except Exception as e:
                 logger.error(f"❌ Failed to save trade to DB: {e}")
@@ -321,10 +321,10 @@ class AutoTrader:
             
             logger.info(f"🚀 SNIPER EXECUTION: {signal_direction} (SL: {config.TRADE_SNIPER_SL} USD / {sl_points} pts, TP: {config.TRADE_SNIPER_TP} USD / {tp_points} pts)")
             
-            # Call relative execution immediately
+            # Call relative execution immediately (Use SNIPER volume)
             response = await self._retry_action(
                 self.client.execute_order_relative, 
-                self.symbol, signal_direction, self.volume, sl_points, tp_points
+                self.symbol, signal_direction, config.TRADE_SNIPER_VOLUME, sl_points, tp_points
             )
             
             logger.info(f"   -> Sniper Result: {response}")
@@ -336,7 +336,7 @@ class AutoTrader:
                     # For relative orders, we don't have exact prices yet, save as 0
                     await database.save_trade_entry(
                         ticket, None, self.symbol, signal_direction,
-                        self.volume, 0.0, sl_points, tp_points
+                        config.TRADE_SNIPER_VOLUME, 0.0, sl_points, tp_points
                     )
                 except Exception as e:
                     logger.error(f"❌ Failed to save SNIPER trade to DB: {e}")
@@ -344,7 +344,7 @@ class AutoTrader:
         else:
             logger.info(f"   -> Score {score} < 8. No automated entry.")
 
-    async def place_straddle_orders(self, distance: float = None, sl: float = None, tp: float = None) -> List[str]:
+    async def place_straddle_orders(self, distance: float = None, sl: float = None, tp: float = None, volume: float = None) -> List[str]:
         """
         Đặt 2 lệnh chờ (Buy Stop / Sell Stop) cách giá hiện tại một khoảng distance.
         Strategy: News Straddle / Trap Trading.
@@ -353,13 +353,15 @@ class AutoTrader:
             distance: USD price distance from current (default: config.TRADE_CALENDAR_DIST)
             sl: Stop loss in USD (default: config.TRADE_CALENDAR_SL)
             tp: Take profit in USD (default: config.TRADE_CALENDAR_TP)
+            volume: Trading volume (default: config.TRADE_CALENDAR_VOLUME)
         """
         # Use CALENDAR config defaults if not provided
         distance = distance if distance is not None else config.TRADE_CALENDAR_DIST
         sl = sl if sl is not None else config.TRADE_CALENDAR_SL
         tp = tp if tp is not None else config.TRADE_CALENDAR_TP
+        vol = volume if volume is not None else config.TRADE_CALENDAR_VOLUME
         
-        logger.info(f"🕸️ Preparing STRADDLE Strategy via MT5 (Distance: {distance} USD, SL: {sl} USD, TP: {tp} USD)...")
+        logger.info(f"🕸️ Preparing STRADDLE Strategy via MT5 (Distance: {distance} USD, SL: {sl} USD, TP: {tp} USD, Vol: {vol})...")
         
         # 1. Get Current Market Price
         df, _ = await get_market_data(self.symbol)
@@ -387,7 +389,7 @@ class AutoTrader:
         # 2. Place BUY STOP
         logger.info(f"   -> Placing BUY STOP @ {buy_stop_price:.2f} (SL: {buy_sl:.2f}, TP: {buy_tp:.2f})")
         res_buy = await self.client.execute_order(
-            self.symbol, "BUY_STOP", self.volume, buy_sl, buy_tp, price=buy_stop_price
+            self.symbol, "BUY_STOP", vol, buy_sl, buy_tp, price=buy_stop_price
         )
         if "SUCCESS" in res_buy:
             ticket_str = res_buy.split("|")[1]
@@ -399,7 +401,7 @@ class AutoTrader:
                 ticket = int(ticket_str)
                 await database.save_trade_entry(
                     ticket, None, self.symbol, "BUY_STOP",
-                    self.volume, buy_stop_price, buy_sl, buy_tp
+                    vol, buy_stop_price, buy_sl, buy_tp
                 )
             except Exception as e:
                 logger.error(f"❌ Failed to save BUY_STOP to DB: {e}")
@@ -409,7 +411,7 @@ class AutoTrader:
         # 3. Place SELL STOP
         logger.info(f"   -> Placing SELL STOP @ {sell_stop_price:.2f} (SL: {sell_sl:.2f}, TP: {sell_tp:.2f})")
         res_sell = await self.client.execute_order(
-            self.symbol, "SELL_STOP", self.volume, sell_sl, sell_tp, price=sell_stop_price
+            self.symbol, "SELL_STOP", vol, sell_sl, sell_tp, price=sell_stop_price
         )
         if "SUCCESS" in res_sell:
              ticket_str = res_sell.split("|")[1]
@@ -421,7 +423,7 @@ class AutoTrader:
                  ticket = int(ticket_str)
                  await database.save_trade_entry(
                      ticket, None, self.symbol, "SELL_STOP",
-                     self.volume, sell_stop_price, sell_sl, sell_tp
+                     vol, sell_stop_price, sell_sl, sell_tp
                  )
              except Exception as e:
                  logger.error(f"❌ Failed to save SELL_STOP to DB: {e}")

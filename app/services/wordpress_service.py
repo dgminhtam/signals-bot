@@ -19,7 +19,11 @@ class WordPressService:
         self.password = config.WORDPRESS_APP_PASSWORD
         self.timeout = 10  # Reduced to 10 seconds to prevent hanging
         
-        if not all([self.url, self.user, self.password]):
+        # Check if WordPress is explicitly disabled
+        if not config.WORDPRESS_ENABLED:
+            logger.info("⚠️ WordPress posting is DISABLED via config (WORDPRESS_ENABLED=false).")
+            self.enabled = False
+        elif not all([self.url, self.user, self.password]):
             logger.warning("⚠️ WordPress config chưa đầy đủ. Tính năng post WP sẽ bị tắt.")
             self.enabled = False
         else:

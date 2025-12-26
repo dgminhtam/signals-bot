@@ -129,13 +129,21 @@ def setup_trade_logging():
 trade_logger = setup_trade_logging()
 
 # WordPress Config
+WORDPRESS_ENABLED = os.getenv("WORDPRESS_ENABLED", "true").lower() == "true"
 WORDPRESS_URL = os.getenv("WORDPRESS_URL")
 WORDPRESS_USER = os.getenv("WORDPRESS_USER")
 WORDPRESS_APP_PASSWORD = os.getenv("WORDPRESS_APP_PASSWORD")
 WORDPRESS_LIVEBLOG_ID = os.getenv("WORDPRESS_LIVEBLOG_ID", "13092")  # ID của bài liveblog gốc
 
 # --- TRADING CONFIG ---
+# Global default volume (fallback for all strategies)
 TRADE_VOLUME = float(os.getenv("TRADE_VOLUME", "0.01"))
+
+# Strategy-Specific Volumes (default to global TRADE_VOLUME if not set)
+TRADE_REPORT_VOLUME = float(os.getenv("TRADE_REPORT_VOLUME", str(TRADE_VOLUME)))
+TRADE_NEWS_VOLUME = float(os.getenv("TRADE_NEWS_VOLUME", str(TRADE_VOLUME)))
+TRADE_SNIPER_VOLUME = float(os.getenv("TRADE_SNIPER_VOLUME", str(TRADE_VOLUME)))
+TRADE_CALENDAR_VOLUME = float(os.getenv("TRADE_CALENDAR_VOLUME", str(TRADE_VOLUME)))
 
 # Trading Strategy SL/TP Configuration (Unit: USD Price Movement for XAUUSD)
 # These values can be overridden via environment variables
