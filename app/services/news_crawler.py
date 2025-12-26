@@ -338,6 +338,7 @@ async def get_gold_news(lookback_minutes: Optional[int] = None, fast_mode: bool 
             # DB Check: Async call
             exists = await database.check_article_exists(link)
             if exists:
+                logger.info(f"   -> ❌ SKIP: Đã có trong DB") # DEBUG
                 continue
 
             # Check time
@@ -345,13 +346,21 @@ async def get_gold_news(lookback_minutes: Optional[int] = None, fast_mode: bool 
                 try:
                     pub_date = parser.parse(pub_str)
                     if pub_date.tzinfo is None: pub_date = pub_date.replace(tzinfo=timezone.utc)
-                    if pub_date < time_limit: continue
-                except: continue
+                    logger.info(f"   -> Time: {pub_date} vs Limit: {time_limit}")
+                    if pub_date < time_limit: 
+                        logger.info(f"   -> ❌ SKIP: Tin quá cũ ({pub_date})") # DEBUG
+                        continue
+                except:
+                    logger.warning("   -> ⚠️ Lỗi parse ngày tháng")
+                    continue
             else:
                 pub_date = now_utc
 
             # Check Keyword
             matched_kws = check_keywords(title + " " + summary)
+            if not matched_kws:
+                logger.info(f"   -> ❌ SKIP: Không chứa từ khóa quan trọng") # DEBUG
+                continue
             
             if matched_kws:
                 logger.info(f"   [+] Tin mới ({'WEB' if is_fallback else 'RSS'}): {title[:50]}...")
