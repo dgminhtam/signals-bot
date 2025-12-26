@@ -44,6 +44,9 @@
 - **Hybrid**: JSON API + HTML Parsing (Async).
 - **Alert**: Pre-News & Post-News Reaction.
 
+### 6. Web Dashboard (New)
+- Giao diện trực quan theo dõi hiệu suất giao dịch (Winrate, PnL, Drawdown) và lịch sử lệnh chi tiết.
+
 ---
 
 ## 📂 Cấu Trúc Dự Án
@@ -101,12 +104,19 @@ python main.py --crawler
 python main.py --calendar
 ```
 
+### 4. Chạy Dashboard
+```bash
+pip install streamlit plotly
+streamlit run dashboard.py
+```
+
 ---
 
 ## ⚠️ Lưu Ý Quan Trọng
 1. **AsyncIO**: Codebase sử dụng `async/await` triệt để. Không dùng các thư viện blocking (như `requests` hay `time.sleep`) trong core loops.
 2. **MT5**: Cần chạy EA `SimpleDataServer` trên MT5 Terminal trước khi chạy Bot.
 3. **Database**: SQLite chạy ở chế độ WAL (Write-Ahead Logging) để hỗ trợ tốt hơn cho async concurrency.
+4. Dashboard chạy trên cổng mặc định 8501. Truy cập http://localhost:8501 để xem.
 
 ---
 
