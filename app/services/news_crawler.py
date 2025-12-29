@@ -279,7 +279,7 @@ async def get_gold_news(lookback_minutes: Optional[int] = None, fast_mode: bool 
     # Init DB Async
     await database.init_db()
     
-    logger.debug(f">>> ĐANG QUÉT TIN TỨC... (Lookback: {lookback_minutes if lookback_minutes else '24h'})")
+    logger.info(f"🔎 BẮT ĐẦU QUÉT TIN TỨC (Lookback: {lookback_minutes if lookback_minutes else '24h'})")
     now_utc = datetime.now(timezone.utc)
     
     if lookback_minutes:
@@ -300,6 +300,7 @@ async def get_gold_news(lookback_minutes: Optional[int] = None, fast_mode: bool 
         timeout_cfg = 10 if fast_mode else 30
 
         # 1. Thử RSS
+        logger.info(f"📰 Đang xử lý nguồn: {source_name}")
         try:
             feed = await get_rss_feed_data(rss_url, timeout=timeout_cfg)
             if feed and feed.entries:
@@ -334,11 +335,11 @@ async def get_gold_news(lookback_minutes: Optional[int] = None, fast_mode: bool 
                 pub_str = getattr(entry, "published", getattr(entry, "updated", ""))
 
             if not link or not title: continue
-            logger.info(f"🔍 Checking: {title[:30]}...")
+            logger.debug(f"🔍 Checking: {title[:50]}...")
             # DB Check: Async call
             exists = await database.check_article_exists(link)
             if exists:
-                logger.info(f"   -> ❌ SKIP: Đã có trong DB") # DEBUG
+                logger.debug(f"   -> SKIP: Đã có trong DB")
                 continue
 
             # Check time
@@ -346,12 +347,12 @@ async def get_gold_news(lookback_minutes: Optional[int] = None, fast_mode: bool 
                 try:
                     pub_date = parser.parse(pub_str)
                     if pub_date.tzinfo is None: pub_date = pub_date.replace(tzinfo=timezone.utc)
-                    logger.info(f"   -> Time: {pub_date} vs Limit: {time_limit}")
+                    logger.debug(f"   -> Time: {pub_date} vs Limit: {time_limit}")
                     if pub_date < time_limit: 
-                        logger.info(f"   -> ❌ SKIP: Tin quá cũ ({pub_date})") # DEBUG
+                        logger.debug(f"   -> SKIP: Tin quá cũ ({pub_date})")
                         continue
                 except:
-                    logger.warning("   -> ⚠️ Lỗi parse ngày tháng")
+                    logger.debug("   -> Lỗi parse ngày tháng")
                     continue
             else:
                 pub_date = now_utc
@@ -359,11 +360,11 @@ async def get_gold_news(lookback_minutes: Optional[int] = None, fast_mode: bool 
             # Check Keyword
             matched_kws = check_keywords(title + " " + summary)
             if not matched_kws:
-                logger.info(f"   -> ❌ SKIP: Không chứa từ khóa quan trọng") # DEBUG
+                logger.debug(f"   -> SKIP: Không chứa từ khóa quan trọng")
                 continue
             
             if matched_kws:
-                logger.info(f"   [+] Tin mới ({'WEB' if is_fallback else 'RSS'}): {title[:50]}...")
+                logger.info(f"✅ PHÁT HIỆN TIN MỚI ({'WEB' if is_fallback else 'RSS'}): {title[:80]}")
                 
                 # Fetch Full Content Async
                 extract_res = await get_full_content(link, selector=selector)

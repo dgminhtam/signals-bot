@@ -14,7 +14,7 @@ logger = config.logger
 
 async def main():
     try:
-        logger.info("⚡ [ALERT WORKER] BẮT ĐẦU QUÉT TIN NÓNG...")
+        logger.debug("⚡ [ALERT WORKER] BẮT ĐẦU QUÉT TIN NÓNG...")
         
         # 1. Trigger Crawler (Async)
         # Note: get_gold_news should be awaited
@@ -24,10 +24,10 @@ async def main():
         recent_articles = await database.get_unalerted_news(lookback_minutes=5)
 
         if not recent_articles:
-            logger.info("   -> Không có tin mới chưa xử lý trong 5 phút qua.")
+            logger.debug("   -> Không có tin mới chưa xử lý trong 5 phút qua.")
             return
 
-        logger.info(f"   -> Tìm thấy {len(recent_articles)} tin chưa Alert. Đang checking...")
+        logger.debug(f"   -> Tìm thấy {len(recent_articles)} tin chưa Alert. Đang checking...")
 
         for article in recent_articles:
             # Defense Layer
@@ -61,7 +61,7 @@ async def main():
                 if score < 5: score = 8 
 
             if is_breaking:
-                logger.info(f"   🔥 BREAKING NEWS: {headline_vi}")
+                logger.warning(f"🔥 BREAKING NEWS: {headline_vi}")
                 
                 # --- SEND TELEGRAM ---
                 score_val = abs(score)
@@ -82,8 +82,10 @@ async def main():
                 image_url = article.get("image_url")
                 if image_url:
                      await telegram_bot.send_report_to_telegram(message, [image_url])
+                     logger.info("✅ Đã gửi Breaking News đến Telegram (có ảnh)")
                 else:
                      await telegram_bot.send_message_async(message)
+                     logger.info("✅ Đã gửi Breaking News đến Telegram")
                 
                 # --- WORDPRESS (Sync wrapped in Thread) ---
                 try:
@@ -106,18 +108,18 @@ async def main():
                 # --- TRIGGER AUTO TRADER (ACTIONABLE) ---
                 try:
                     if score_val >= 5: 
-                        logger.info("   🤖 Activating Trader response...")
+                        logger.info("🤖 Activating Auto Trader...")
                         trader = AutoTrader()
                         ai_trend = analysis.get('trend_forecast', 'NEUTRAL').upper()
                         if ai_trend == "BULLISH":
                             trend_est = "BULLISH"
-                            logger.info("📈 AI Prediction: Vàng sẽ TĂNG giá.")
+                            logger.info("   📈 AI Prediction: Vàng sẽ TĂNG giá.")
                         elif ai_trend == "BEARISH":
                             trend_est = "BEARISH"
-                            logger.info("📉 AI Prediction: Vàng sẽ GIẢM giá.")
+                            logger.info("   📉 AI Prediction: Vàng sẽ GIẢM giá.")
                         else:
                             trend_est = "NEUTRAL"
-                            logger.info("⚖️ AI Prediction: Không rõ xu hướng hoặc Sideway.")
+                            logger.info("   ⚖️ AI Prediction: Không rõ xu hướng hoặc Sideway.")
                             
                         news_data = {
                             'title': headline_vi,
@@ -140,7 +142,7 @@ async def main():
         logger.error(f"❌ Lỗi Alert Worker: {e}", exc_info=True)
 
     finally:
-        logger.info("⚡ [ALERT WORKER] HOÀN TẤT.")
+        logger.debug("⚡ [ALERT WORKER] HOÀN TẤT.")
 
 if __name__ == "__main__":
     asyncio.run(main())

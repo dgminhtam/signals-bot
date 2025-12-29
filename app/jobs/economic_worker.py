@@ -16,7 +16,7 @@ logger = config.logger
 
 async def main():
     try:
-        logger.info("📅 [ECONOMIC WORKER] Đang kiểm tra Lịch Kinh Tế...")
+        logger.debug("📅 [ECONOMIC WORKER] Đang kiểm tra Lịch Kinh Tế...")
         
         # Đảm bảo Table tồn tại (nếu chạy lần đầu)
         await database.init_db()
@@ -24,7 +24,7 @@ async def main():
         service = EconomicCalendarService()
         await service.process_calendar_alerts()
         
-        logger.info("📅 [ECONOMIC WORKER] Hoàn tất.")
+        logger.debug("📅 [ECONOMIC WORKER] Hoàn tất.")
         
     except Exception as e:
         logger.error(f"❌ Economic Worker Error: {e}", exc_info=True)

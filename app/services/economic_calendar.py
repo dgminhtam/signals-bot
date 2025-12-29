@@ -73,7 +73,7 @@ class EconomicCalendarService:
                     with open(CACHE_FILE, 'r') as f:
                         return await loop.run_in_executor(None, json.load, f)
             
-            logger.info(f"🌐 Fetching Schedule JSON: {SCHEDULE_JSON_URL}")
+            logger.debug(f"🌐 Fetching Schedule JSON: {SCHEDULE_JSON_URL}")
             # USE ROTATION
             response = await self._fetch_url(SCHEDULE_JSON_URL)
             
@@ -167,7 +167,7 @@ class EconomicCalendarService:
         Quét HTML để lấy `Actual` value (Async).
         """
         url = self.base_url  # URL default (Weekly view)
-        logger.info(f"⚡ Scanning Real-time HTML (Weekly View): {url}")
+        logger.debug(f"⚡ Scanning Real-time HTML (Weekly View): {url}")
         
         try:
             # USE ROTATION
@@ -305,6 +305,7 @@ class EconomicCalendarService:
                     continue
                 
                 time_str = self._format_vn_time(event['timestamp'])
+                logger.info(f"📢 Sending Pre-News Alert: {event['title']} (in {int(diff)} mins)")
                 await self.send_pre_alert(event, int(diff), time_str)
                 await database.update_event_status(event['id'], 'pre_notified')
                 
@@ -312,6 +313,7 @@ class EconomicCalendarService:
             post_alerts = await database.get_pending_post_alerts()
             for event in post_alerts:
                 time_str = self._format_vn_time(event['timestamp'])
+                logger.info(f"📢 Sending Post-News Alert: {event['title']}")
                 await self.send_post_alert(event, time_str)
                 await database.update_event_status(event['id'], 'post_notified')
 
