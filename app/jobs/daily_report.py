@@ -229,7 +229,14 @@ async def main():
             
             # Bridge -> AutoTrader
             tr_signal = analysis_result.get('trade_signal', {})
-            tr_type = tr_signal.get('order_type', 'WAIT').upper()
+            raw_tr_type = tr_signal.get('order_type', 'WAIT').upper()
+            if "BUY" in raw_tr_type:
+                tr_type = "BUY"
+            elif "SELL" in raw_tr_type:
+                tr_type = "SELL"
+            else:
+                tr_type = "WAIT"
+                
             if tr_type in ['BUY', 'SELL']:
                 logger.info(f"🔄 Syncing signal {tr_type} to AutoTrader...")
                 
