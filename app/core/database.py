@@ -133,11 +133,17 @@ async def init_db() -> None:
                     close_price REAL,
                     profit REAL,
                     status TEXT DEFAULT 'OPEN',
+                    strategy TEXT,    -- NEW: Strategy Name (NEWS, SNIPER, REPORT, CALENDAR)
                     open_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     close_time TIMESTAMP,
                     FOREIGN KEY (signal_id) REFERENCES trade_signals(id)
                 )
             ''')
+            
+            # Migration: Add columns if not exists
+            try:
+                await conn.execute("ALTER TABLE trade_history ADD COLUMN strategy TEXT")
+            except Exception: pass
             
             await conn.commit()
     except Exception as e:
@@ -469,18 +475,19 @@ async def get_events_for_trap(min_minutes: float = 1.6, max_minutes: float = 2.4
 
 # --- Trade History Database Methods (Async) ---
 async def save_trade_entry(ticket: int, signal_id: Optional[int], symbol: str, order_type: str, 
-                           volume: float, open_price: float, sl: float, tp: float) -> bool:
+                           volume: float, open_price: float, sl: float, tp: float, strategy: str = 'MANUAL') -> bool:
     """
     Lưu trade mới vào database khi order được thực thi thành công.
     Status mặc định là 'OPEN'.
+    Strategy: NEWS, SNIPER, REPORT, CALENDAR or MANUAL.
     """
     try:
         async with get_db_connection() as conn:
             await conn.execute('''
                 INSERT INTO trade_history (ticket, signal_id, symbol, order_type, volume, 
-                                          open_price, sl, tp, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'OPEN')
-            ''', (ticket, signal_id, symbol, order_type, volume, open_price, sl, tp))
+                                          open_price, sl, tp, strategy, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN')
+            ''', (ticket, signal_id, symbol, order_type, volume, open_price, sl, tp, strategy))
             await conn.commit()
             logger.info(f"💾 Saved trade to DB: Ticket #{ticket} ({order_type} {symbol})")
             return True
@@ -538,18 +545,33 @@ async def update_trade_profit(ticket: int, profit: float) -> bool:
 
 async def update_trade_entry_price(ticket: int, open_price: float) -> bool:
     """
-    Cập nhật Open Price (dùng cho lệnh Sniper/Relative khi entry ban đầu là 0).
+    Make update_trade_entry_price compatible alias for update_trade_details just for price.
+    """
+    return await update_trade_details(ticket, open_price, 0.0, 0.0)
+
+async def update_trade_details(ticket: int, open_price: float, sl: float, tp: float) -> bool:
+    """
+    Cập nhật chi tiết Open Price, SL, TP từ MT5 (fix lỗi Points vs Price).
+    Nếu SL/TP = 0 thì có thể giữ nguyên hoặc update tùy logic, ở đây ta update luôn.
     """
     try:
         async with get_db_connection() as conn:
+            # Chỉ update nếu giá trị > 0 để tránh ghi đè sai nếu không cần thiết, 
+            # nhưng yêu cầu là đồng bộ chính xác từ MT5 nên ta update thẳng.
+            # Tuy nhiên, SQL dynamic sẽ tốt hơn nếu data thiếu. 
+            # Ở đây giả sử trading_monitor luôn truyền full data.
+            
             await conn.execute('''
-                UPDATE trade_history SET open_price = ? WHERE ticket = ?
-            ''', (open_price, ticket))
+                UPDATE trade_history 
+                SET open_price = ?, sl = ?, tp = ?
+                WHERE ticket = ?
+            ''', (open_price, sl, tp, ticket))
+            
             await conn.commit()
-            logger.info(f"💾 Updated trade entry: Ticket #{ticket} (Price: {open_price})")
+            logger.info(f"💾 Updated trade details #{ticket}: Price={open_price}, SL={sl}, TP={tp}")
             return True
     except Exception as e:
-        logger.error(f"❌ Lỗi update_trade_entry_price: {e}")
+        logger.error(f"❌ Lỗi update_trade_details: {e}")
         return False
 
 async def get_trade_metadata(ticket: int) -> Optional[Dict[str, Any]]:

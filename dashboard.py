@@ -36,8 +36,14 @@ def load_data():
         # Handle Date Columns
         date_cols = ['open_time', 'close_time']
         for col in date_cols:
-             if col in df.columns:
-                 df[col] = pd.to_datetime(df[col], errors='coerce')
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors='coerce')
+        
+        # Fill missing strategy
+        if 'strategy' in df.columns:
+            df['strategy'] = df['strategy'].fillna('MANUAL')
+        else:
+            df['strategy'] = 'MANUAL'
                  
         return df
     except Exception as e:
@@ -59,10 +65,7 @@ if df.empty:
     st.warning("⚠️ No trade data found. The database might be empty or the table 'trade_history' does not exist.")
 else:
     # --- Metrics Section (Top Row) ---
-    # Filter closed trades for clearer stats (or include open? Request said 'closed trades' for Total Trades)
-    # Actually request: "Total Trades: Count of closed trades". 
-    # Win Rate: Profit > 0
-    
+    # Filter closed trades for clearer stats
     closed_trades = df[df['status'] == 'CLOSED']
     total_closed = len(closed_trades)
     
@@ -73,13 +76,7 @@ else:
     else:
         win_rate = 0.0
         
-    # Net Profit (Request: Sum of 'profit' column - implying all processed trades?)
-    # Usually Net Profit implies realized profit, i.e., closed trades.
-    # Open trades have 'profit' as floating PnL (updated by monitor).
-    # If users want current equity impact, we should include open.
-    # But usually dashboard stats focus on Realized.
-    # Ref: "Count of closed trades" for metric 1. 
-    # Let's assume Net Profit is likewise Realized Profit to correspond to Win Rate and Total Closed.
+    # Net Profit
     net_profit = closed_trades['profit'].sum()
 
     col1, col2, col3 = st.columns(3)
@@ -117,7 +114,6 @@ else:
         st.subheader("📊 PnL Distribution")
         if not closed_trades.empty:
             # Bar chart of profit per ticket
-            # Color bars by profit > 0
             closed_trades['color'] = closed_trades['profit'] > 0
             fig_bar = px.bar(closed_trades, x="ticket", y="profit",
                              color="color",
@@ -131,6 +127,54 @@ else:
 
     st.markdown("---")
     
+    # --- Strategy Performance Section ---
+    st.subheader("🎯 Strategy Performance")
+    
+    if 'strategy' in df.columns and not closed_trades.empty:
+        # Group by Strategy
+        strategy_stats = closed_trades.groupby('strategy').agg(
+            Total_Trades=('ticket', 'count'),
+            Total_Profit=('profit', 'sum'),
+            Wins=('profit', lambda x: (x > 0).sum())
+        ).reset_index()
+        
+        # Calculate Win Rate
+        strategy_stats['Win_Rate'] = (strategy_stats['Wins'] / strategy_stats['Total_Trades'] * 100).round(1)
+        
+        # Format for display
+        display_stats = strategy_stats[['strategy', 'Total_Trades', 'Win_Rate', 'Total_Profit']].sort_values(by='Total_Profit', ascending=False)
+        
+        # Layout: Table + Pie Chart
+        col_strat1, col_strat2 = st.columns([1, 1])
+        
+        with col_strat1:
+            st.caption("Detailed Statistics by Strategy")
+            st.dataframe(
+                display_stats.style.format({
+                    'Win_Rate': '{:.1f}%',
+                    'Total_Profit': '${:,.2f}'
+                }),
+                use_container_width=True
+            )
+            
+        with col_strat2:
+            st.caption("Profit Distribution by Strategy")
+            
+            # Pie Chart for strategies with Positive Profit
+            pie_data = strategy_stats[strategy_stats['Total_Profit'] > 0].copy()
+            if not pie_data.empty:
+                fig_pie = px.pie(pie_data, values='Total_Profit', names='strategy', 
+                                 title="Profit Share (Proftiable Strategies)",
+                                 hole=0.4)
+                st.plotly_chart(fig_pie, use_container_width=True)
+            else:
+                st.info("No profitable strategies to display in Pie Chart.")
+                
+    else:
+        st.info("No Strategy data available.")
+
+    st.markdown("---")
+    
     # --- Data Table Section ---
     st.subheader("📋 Trade History Details")
     
@@ -139,12 +183,8 @@ else:
         color = 'green' if val > 0 else 'red' if val < 0 else 'black'
         return f'color: {color}'
     
-    # Standard dataframe display
-    # Sorting by close_time descending (done in SQL or Pandas)
-    # df is already sorted by close_time DESC from SQL query above.
-    
     # Selecting relevant columns for display
-    display_cols = ['ticket', 'symbol', 'order_type', 'volume', 'open_price', 'close_price', 'profit', 'status', 'open_time', 'close_time', 'sl', 'tp']
+    display_cols = ['ticket', 'strategy', 'symbol', 'order_type', 'volume', 'open_price', 'close_price', 'profit', 'status', 'open_time', 'close_time', 'sl', 'tp']
     # Filter only existing columns
     display_cols = [c for c in display_cols if c in df.columns]
     

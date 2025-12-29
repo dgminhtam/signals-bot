@@ -34,7 +34,7 @@ async def main():
         mt5_positions = await client.get_open_positions(symbol="ALL")
         
         # Create a dictionary for fast lookup: ticket -> position data
-        # Example position items: {'ticket': 123, 'type': 'BUY', 'volume': 0.1, 'profit': 10.5, ...}
+        # Example position items: {'ticket': 123, 'type': 'BUY', 'volume': 0.1, 'profit': 10.5, 'sl': 2000.5, 'tp': 2010.5, ...}
         mt5_map = {pos['ticket']: pos for pos in mt5_positions}
         
         logger.info(f"   -> Found {len(mt5_positions)} open positions in MT5")
@@ -55,13 +55,21 @@ async def main():
                 await database.update_trade_profit(ticket, current_profit)
                 updated_count += 1
                 
-                # 2. KIỂM TRA QUAN TRỌNG: Update Open Price nếu đang là 0 (Lệnh Sniper/Relative)
-                db_open_price = float(trade.get('open_price') or 0.0)
-                mt5_open_price = mt5_pos.get('open_price')
+                # 2. KIỂM TRA QUAN TRỌNG: Sync Real Values (Price, SL, TP) từ MT5
+                # Mục đích: Fix lỗi hiển thị 'Points' (lệnh Sniper) thành 'Price'
                 
-                if mt5_open_price and (db_open_price == 0.0 or abs(db_open_price - mt5_open_price) > 0.0001):
-                    await database.update_trade_entry_price(ticket, float(mt5_open_price))
-                    logger.info(f"      ✅ Updated real entry price for Sniper trade #{ticket}: {mt5_open_price}") 
+                db_open_price = float(trade.get('open_price') or 0.0)
+                mt5_open_price = float(mt5_pos.get('open_price') or 0.0)
+                
+                # SL/TP should be available from MT5 now (via updated Bridge)
+                mt5_sl = float(mt5_pos.get('sl') or 0.0)
+                mt5_tp = float(mt5_pos.get('tp') or 0.0)
+                
+                # Update nếu giá open thay đổi (fill lệnh) hoặc cần cập nhật SL/TP
+                # Chú ý: Ta luôn update để đảm bảo đồng bộ mới nhất
+                if mt5_open_price > 0:
+                     await database.update_trade_details(ticket, mt5_open_price, mt5_sl, mt5_tp)
+                     # logger.debug(f"      ✅ Synced details for #{ticket}") 
                 
             else:
                 # --- TRƯỜNG HỢP B: Trade không còn trên MT5 (Closed) ---

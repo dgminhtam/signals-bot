@@ -26,7 +26,6 @@ class AutoTrader:
         return price_delta * 100.0
         
 
-
     async def _retry_action(self, func, *args, max_retries=3, delay=1.0):
         """
         Helper thực hiện retry nếu gặp lỗi hoặc phản hồi FAIL (Async)
@@ -179,6 +178,7 @@ class AutoTrader:
                     logger.info("   -> No opposite positions found")
             else:
                 logger.info("   -> No open positions")
+
             # Execute via Retry (Use NEWS volume)
             logger.info(f"🚀 Executing NEWS {signal_type} | @{current_price:.2f} | SL:{sl} TP:{tp} | Vol:{config.TRADE_NEWS_VOLUME}")
             result = await self._retry_action(self.client.execute_order, self.symbol, signal_type, config.TRADE_NEWS_VOLUME, sl, tp)
@@ -190,7 +190,8 @@ class AutoTrader:
                     ticket = int(result.split("|")[1])
                     await database.save_trade_entry(
                         ticket, signal_id, self.symbol, signal_type, 
-                        config.TRADE_NEWS_VOLUME, current_price, sl, tp
+                        config.TRADE_NEWS_VOLUME, current_price, sl, tp,
+                        strategy='NEWS'
                     )
                 except Exception as e:
                     logger.error(f"❌ Failed to save trade to DB: {e}")
@@ -216,8 +217,6 @@ class AutoTrader:
         if df is None or df.empty: return "FAIL_NO_DATA"
         
         current_price = df['Close'].iloc[-1]
-        
-
         
         # Extract AI-generated SL/TP from database
         db_entry = signal_data.get('entry_price')
@@ -256,7 +255,8 @@ class AutoTrader:
                 ticket = int(result.split("|")[1])
                 await database.save_trade_entry(
                     ticket, signal_id, self.symbol, signal_type,
-                    config.TRADE_REPORT_VOLUME, current_price, sl, tp
+                    config.TRADE_REPORT_VOLUME, current_price, sl, tp,
+                    strategy='REPORT'
                 )
             except Exception as e:
                 logger.error(f"❌ Failed to save trade to DB: {e}")
@@ -327,7 +327,8 @@ class AutoTrader:
                     # For relative orders, we don't have exact prices yet, save as 0
                     await database.save_trade_entry(
                         ticket, None, self.symbol, signal_direction,
-                        config.TRADE_SNIPER_VOLUME, 0.0, sl_points, tp_points
+                        config.TRADE_SNIPER_VOLUME, 0.0, sl_points, tp_points,
+                        strategy='SNIPER'
                     )
                 except Exception as e:
                     logger.error(f"❌ Failed to save SNIPER trade to DB: {e}")
@@ -392,7 +393,8 @@ class AutoTrader:
                 ticket = int(ticket_str)
                 await database.save_trade_entry(
                     ticket, None, self.symbol, "BUY_STOP",
-                    vol, buy_stop_price, buy_sl, buy_tp
+                    vol, buy_stop_price, buy_sl, buy_tp,
+                    strategy='CALENDAR'
                 )
             except Exception as e:
                 logger.error(f"❌ Failed to save BUY_STOP to DB: {e}")
@@ -414,7 +416,8 @@ class AutoTrader:
                  ticket = int(ticket_str)
                  await database.save_trade_entry(
                      ticket, None, self.symbol, "SELL_STOP",
-                     vol, sell_stop_price, sell_sl, sell_tp
+                     vol, sell_stop_price, sell_sl, sell_tp,
+                     strategy='CALENDAR'
                  )
              except Exception as e:
                  logger.error(f"❌ Failed to save SELL_STOP to DB: {e}")
@@ -436,4 +439,3 @@ class AutoTrader:
                 logger.info(f"   -> Delete #{t}: {res}")
             except Exception as e:
                 logger.error(f"   ❌ Error deleting #{t}: {e}")
-

@@ -188,21 +188,39 @@ class MT5DataClient:
             for item in items:
                 if not item.strip(): continue
                 parts = item.split(",")
-                if len(parts) >= 5:
+                
+                # Format: TICKET,TYPE,PRICE,VOL,PROFIT,SL,TP
+                if len(parts) >= 7:
                     pos = {
                         "ticket": int(parts[0]),
                         "type": "BUY" if int(parts[1]) == 0 else "SELL",
                         "open_price": float(parts[2]),
                         "volume": float(parts[3]),
-                        "profit": float(parts[4])
+                        "profit": float(parts[4]),
+                        "sl": float(parts[5]),
+                        "tp": float(parts[6])
                     }
                     positions.append(pos)
-                elif len(parts) >= 4: # Fallback for old version
+                elif len(parts) >= 5: # Fallback for older EA (no SL/TP)
+                    pos = {
+                        "ticket": int(parts[0]),
+                        "type": "BUY" if int(parts[1]) == 0 else "SELL",
+                        "open_price": float(parts[2]),
+                        "volume": float(parts[3]),
+                        "profit": float(parts[4]),
+                        "sl": 0.0,
+                        "tp": 0.0
+                    }
+                    positions.append(pos)
+                elif len(parts) >= 4: # Fallback for very old EA
                     pos = {
                         "ticket": int(parts[0]),
                         "type": "BUY" if int(parts[1]) == 0 else "SELL",
                         "volume": float(parts[2]),
-                        "profit": float(parts[3])
+                        "profit": float(parts[3]),
+                        "open_price": 0.0,
+                        "sl": 0.0,
+                        "tp": 0.0
                     }
                     positions.append(pos)
             
