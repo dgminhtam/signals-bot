@@ -217,16 +217,7 @@ class AutoTrader:
         
         current_price = df['Close'].iloc[-1]
         
-        # Volume Check
-        try:
-             vol_sma20 = df['Volume'].tail(20).mean()
-             current_vol = df['Volume'].iloc[-1]
-             prev_vol = df['Volume'].iloc[-2]
-             
-             if (current_vol <= vol_sma20) and (prev_vol <= vol_sma20):
-                  logger.warning("⚠️ Volume Low (< SMA20). AI Signal Weak.")
-                  return "WAIT_LOW_VOLUME"
-        except: pass
+
         
         # Extract AI-generated SL/TP from database
         db_entry = signal_data.get('entry_price')
