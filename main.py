@@ -163,7 +163,7 @@ async def start_scheduler():
         logger.critical(f"🔥 LỖI NGHIÊM TRỌNG: {e}", exc_info=True)
         scheduler.shutdown()
 
-async def run_manual_async(report_only=False, alert_only=False, trade_only=False, crawler_only=False, calendar_only=False):
+async def run_manual_async(report_only=False, alert_only=False, trade_only=False, crawler_only=False, calendar_only=False, monitor_only=False):
     """Chạy full flow thủ công (Async Wrapper)"""
     
     from app.core import database
@@ -195,6 +195,11 @@ async def run_manual_async(report_only=False, alert_only=False, trade_only=False
          await economic_worker.main()
          return
 
+    if monitor_only:
+         logger.info("💾 Running Manual Trade Monitor (Sync Now)...")
+         await trade_monitor.main()
+         return
+
     # Default: Full Check
     logger.info("🛠️ [MANUAL MODE] Kích hoạt chạy thủ công toàn bộ quy trình...")
     logger.info("\n1️⃣ STEP 1: SCAN NEWS (Force Run)")
@@ -216,6 +221,7 @@ def main():
     parser.add_argument("--crawler", action="store_true", help="Chạy thủ công chỉ phần News Crawler")
     parser.add_argument("--trade", action="store_true", help="Chạy thủ công Auto Trader")
     parser.add_argument("--calendar", action="store_true", help="Chạy thủ công Economic Calendar")
+    parser.add_argument("--monitor", action="store_true", help="Chạy thủ công Trade Monitor (Sync SL/TP)")
     
     args = parser.parse_args()
 
@@ -232,6 +238,8 @@ def main():
              asyncio.run(run_manual_async(crawler_only=True))
         elif args.calendar:
              asyncio.run(run_manual_async(calendar_only=True))
+        elif args.monitor:
+             asyncio.run(run_manual_async(monitor_only=True))
         else:
             # Chạy Scheduler (Async Mode)
             asyncio.run(start_scheduler())

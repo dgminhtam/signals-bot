@@ -538,18 +538,29 @@ async def get_open_trades() -> List[Dict[str, Any]]:
         logger.error(f"Lỗi get_open_trades: {e}")
         return []
 
-async def update_trade_exit(ticket: int, close_price: float, profit: float, status: str = 'CLOSED', close_reason: str = None) -> bool:
+async def update_trade_exit(ticket: int, close_price: float, profit: float, status: str = 'CLOSED', close_reason: str = None, sl: float = None, tp: float = None) -> bool:
     """
     Cập nhật thông tin khi trade đóng.
     Thêm close_reason để tracking (HIT_SL, HIT_TP, CONFLICT...).
+    Cập nhật SL/TP chính xác từ MT5 nếu có.
     """
     try:
         async with get_db_connection() as conn:
+            # Xây dựng câu query dynamic hoặc update luôn (ở đây ta update luôn nếu có giá trị)
+            # COALESCE không hoạt động tốt với UPDATE SET dynamic trong chuỗi đơn giản này nếu sl/tp là None.
+            # Ta dùng logic Python để build SET clause hoặc update full nếu param có.
+            
+            # Tuy nhiên, để đơn giản và hiệu quả, ta dùng logic SQL: SET sl = COALESCE(?, sl), tp = COALESCE(?, tp)
+            # Nhưng sqlite param ? bind None sẽ thành NULL, và COALESCE(NULL, sl) -> sl (giữ nguyên).
+            # Vậy ta truyền sl, tp vào.
+            
             await conn.execute('''
                 UPDATE trade_history 
-                SET close_price = ?, profit = ?, status = ?, close_reason = ?, close_time = CURRENT_TIMESTAMP
+                SET close_price = ?, profit = ?, status = ?, close_reason = ?, close_time = CURRENT_TIMESTAMP,
+                    sl = COALESCE(?, sl), tp = COALESCE(?, tp)
                 WHERE ticket = ?
-            ''', (close_price, profit, status, close_reason, ticket))
+            ''', (close_price, profit, status, close_reason, sl, tp, ticket))
+            
             await conn.commit()
             logger.info(f"💾 Updated trade exit: Ticket #{ticket} (Profit: {profit:.2f})")
             return True

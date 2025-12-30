@@ -246,22 +246,30 @@ class MT5DataClient:
     async def get_trade_history(self, ticket: int) -> Optional[Dict]:
         """
         Lấy thông tin lệnh đã đóng từ lịch sử: HISTORY|TICKET
-        Trả về: {'close_price': float, 'profit': float, 'status': 'CLOSED'} hoặc None
+        Trả về: {'close_price': float, 'profit': float, 'status': 'CLOSED', 'sl': float, 'tp': float} hoặc None
         """
         command = f"HISTORY|{ticket}"
         try:
             response = await self._send_simple_command(command)
             
-            # Xử lý response: "SUCCESS|CLOSE_PRICE|TOTAL_PROFIT"
+            # Xử lý response
             if response and response.startswith("SUCCESS"):
                 parts = response.split("|")
-                if len(parts) >= 3:
-                    return {
-                        'close_price': float(parts[1]),
-                        'profit': float(parts[2]),
-                        'status': 'CLOSED'
-                    }
-            
+                
+                # Mặc định (Format cũ)
+                result = {
+                    'close_price': float(parts[1]) if len(parts) > 1 else 0.0,
+                    'profit': float(parts[2]) if len(parts) > 2 else 0.0,
+                    'status': 'CLOSED'
+                }
+                
+                # CẬP NHẬT MỚI: Lấy thêm SL/TP nếu có (Format mới từ EA)
+                if len(parts) >= 5:
+                    result['sl'] = float(parts[3])
+                    result['tp'] = float(parts[4])
+                    
+                return result
+                
             return None
             
         except Exception as e:
