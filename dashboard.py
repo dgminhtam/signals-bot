@@ -44,6 +44,12 @@ def load_data():
             df['strategy'] = df['strategy'].fillna('MANUAL')
         else:
             df['strategy'] = 'MANUAL'
+
+        # Fill missing close_reason
+        if 'close_reason' in df.columns:
+            df['close_reason'] = df['close_reason'].fillna('') 
+        else:
+            df['close_reason'] = ''
                  
         return df
     except Exception as e:
@@ -184,7 +190,7 @@ else:
         return f'color: {color}'
     
     # Selecting relevant columns for display
-    display_cols = ['ticket', 'strategy', 'symbol', 'order_type', 'volume', 'open_price', 'close_price', 'profit', 'status', 'open_time', 'close_time', 'sl', 'tp']
+    display_cols = ['ticket', 'strategy', 'symbol', 'order_type', 'volume', 'open_price', 'close_price', 'profit', 'status', 'close_reason', 'open_time', 'close_time', 'sl', 'tp']
     # Filter only existing columns
     display_cols = [c for c in display_cols if c in df.columns]
     
