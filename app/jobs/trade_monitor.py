@@ -82,14 +82,34 @@ async def main():
                     real_close_price = history_data.get('close_price', 0.0)
                     real_profit = history_data.get('profit', 0.0)
                     
+                    # Heuristic Logic for Close Reason
+                    db_sl = float(trade.get('sl') or 0.0)
+                    db_tp = float(trade.get('tp') or 0.0)
+                    close_reason = "MANUAL/MT5"
+                    
+                    # Tolerance for "close enough" (e.g., slippage handling)
+                    # For XAUUSD, 0.5 - 1.0 USD might be reasonable depending on broker.
+                    # Let's use 1.0 as a safe buffer.
+                    tolerance = 1.0 
+                    
+                    if real_profit > 0 and db_tp > 0 and abs(real_close_price - db_tp) <= tolerance:
+                        close_reason = "HIT_TP"
+                    elif real_profit < 0 and db_sl > 0 and abs(real_close_price - db_sl) <= tolerance:
+                        close_reason = "HIT_SL"
+                    elif real_profit > 0:
+                        # Profit but not hitting TP exactly? Maybe Trailing Stop (which acts like SL but positive)?
+                        # Or Manual Close in profit.
+                        pass 
+                    
                     await database.update_trade_exit(
                         ticket=ticket,
                         close_price=real_close_price,
                         profit=real_profit,
-                        status='CLOSED'
+                        status='CLOSED',
+                        close_reason=close_reason
                     )
                     closed_count += 1
-                    logger.info(f"      ✅ Synced CLOSED trade #{ticket}: Profit={real_profit}")
+                    logger.info(f"      ✅ Synced CLOSED trade #{ticket}: Profit={real_profit} ({close_reason})")
                 else:
                     # Không lấy được lịch sử
                     logger.warning(f"      ⚠️ History not found for #{ticket}. Keeping as OPEN to retry later.")

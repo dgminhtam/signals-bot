@@ -139,6 +139,12 @@ WORDPRESS_LIVEBLOG_ID = os.getenv("WORDPRESS_LIVEBLOG_ID", "13092")  # ID của 
 # Global default volume (fallback for all strategies)
 TRADE_VOLUME = float(os.getenv("TRADE_VOLUME", "0.01"))
 
+# Time-To-Live for Signals (Minutes) - Avoid executing stale signals
+SIGNAL_TTL_MINUTES = int(os.getenv("SIGNAL_TTL_MINUTES", "30"))
+
+# Scheduler Interval (Seconds) - How often the bot checks for signals
+SCHEDULER_INTERVAL_SECONDS = int(os.getenv("SCHEDULER_INTERVAL_SECONDS", "60"))
+
 # Strategy-Specific Volumes (default to global TRADE_VOLUME if not set)
 TRADE_REPORT_VOLUME = float(os.getenv("TRADE_REPORT_VOLUME", str(TRADE_VOLUME)))
 TRADE_NEWS_VOLUME = float(os.getenv("TRADE_NEWS_VOLUME", str(TRADE_VOLUME)))

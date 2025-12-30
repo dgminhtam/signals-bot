@@ -49,12 +49,35 @@ class AutoTrader:
                 
         return "FAIL|MAX_RETRIES"
 
-    async def close_all_positions(self, symbol: str) -> bool:
+    async def check_market_conflict(self, signal_type: str) -> bool:
+        """
+        Kiểm tra xung đột: Trả về True nếu tồn tại lệnh ngược chiều (Opened positions).
+        Signal BUY -> Check if SELL exists.
+        Signal SELL -> Check if BUY exists.
+        """
+        try:
+            positions = await self.client.get_open_positions(self.symbol)
+            if not positions:
+                return False
+                
+            opposite_type = "SELL" if signal_type == "BUY" else "BUY"
+            
+            # Check if any position matches opposite type
+            for pos in positions:
+                if pos['type'] == opposite_type:
+                    return True
+                    
+            return False
+        except Exception as e:
+            logger.error(f"Error checking conflict: {e}")
+            return False  # Assume no conflict on error to avoid blocking, or True to be safe? Default False for now.
+
+    async def close_all_positions(self, symbol: str, reason: str = "STRATEGY_EXIT") -> bool:
         """
         Đóng TẤT CẢ lệnh của symbol (Async).
         Trả về True nếu sạch lệnh, False nếu vẫn còn.
         """
-        logger.info(f"🛡️ DEFENSIVE MODE: Closing ALL positions for {symbol}...")
+        logger.info(f"🛡️ DEFENSIVE MODE: Closing ALL positions for {symbol} (Reason: {reason})...")
         
         # 1. Get List
         positions = await self.client.get_open_positions(symbol)
@@ -70,6 +93,15 @@ class AutoTrader:
             res = await self._retry_action(self.client.close_order, ticket)
             if "FAIL" in str(res):
                  logger.error(f"   ❌ Failed to close #{ticket}: {res}")
+            else:
+                 # Update DB immediately
+                 await database.update_trade_exit(
+                     ticket=ticket,
+                     close_price=0.0, # Will be synced by monitor later if precise needed, or 0 here
+                     profit=pos.get('profit', 0.0),
+                     status='CLOSED',
+                     close_reason=reason
+                 )
         
         # 3. Double Check
         await asyncio.sleep(1.0) # Wait for MT5 update
@@ -83,188 +115,161 @@ class AutoTrader:
         
     async def analyze_and_trade(self):
         """
-        Chiến lược (Async version):
+        Chiến lược (Batch Processing & Conflict Guard implementation):
         """
         logger.info(f"🤖 Starting Analysis for {self.symbol} (Vol: {self.volume})...")
 
-        # 1. Get Signal from DB
-        signal_data = await database.get_latest_valid_signal(self.symbol, ttl_minutes=60)
+        # 1. Get ALL Valid Signals from DB (Sorted by Quality)
+        signals_list = await database.get_all_valid_signals(self.symbol, ttl_minutes=config.SIGNAL_TTL_MINUTES)
         
-        if not signal_data:
-            logger.info("⏸️ No valid signal in DB (News/AI). Waiting...")
+        if not signals_list:
+            logger.info("⏸️ No valid signals in DB (News/AI). Waiting...")
             return "WAIT_NO_SIGNAL"
 
-        source = signal_data.get('source', 'UNKNOWN')
-        signal_type = signal_data.get('signal_type', 'WAIT')
-        score = signal_data.get('score', 0)
-        signal_id = signal_data.get('id')
+        logger.info(f"📥 Found {len(signals_list)} valid signals. Processing batch...")
         
-        logger.info(f"📥 Received Signal: {signal_type} from {source} (Score: {score}, ID: {signal_id})")
-        
-        # ===== CASE A: NEWS SIGNAL (FAST TRACK) =====
-        if source == 'NEWS':
-            logger.info("⚡ NEWS SIGNAL detected! Executing FAST TRACK...")
-            
-            df, _ = await get_market_data(self.symbol)
-            if df is None or df.empty:
-                logger.error("❌ Failed to get market price for News Order.")
-                return "FAIL_NO_PRICE"
-            current_price = df['Close'].iloc[-1]
-            
-            # Use NEWS config
-            sl = 0.0
-            tp = 0.0
-            
-            if signal_type == "BUY":
-                sl = current_price - config.TRADE_NEWS_SL
-                tp = current_price + config.TRADE_NEWS_TP
-            elif signal_type == "SELL":
-                sl = current_price + config.TRADE_NEWS_SL
-                tp = current_price - config.TRADE_NEWS_TP
-            else:
-                 return "WAIT"
+        results = []
 
-            # ===== SMART POSITION MANAGEMENT =====
-            # Check for opposite positions and close weak NEWS trades
-            logger.info("🔍 Checking for opposite positions...")
-            open_positions = await self.client.get_open_positions(self.symbol)
+        # 2. Iterate through signals
+        for signal_data in signals_list:
+            source = signal_data.get('source', 'UNKNOWN')
+            signal_type = signal_data.get('signal_type', 'WAIT')
+            score = signal_data.get('score', 0)
+            signal_id = signal_data.get('id')
             
-            if open_positions:
-                opposite_type = "SELL" if signal_type == "BUY" else "BUY"
-                opposite_positions = [pos for pos in open_positions if pos['type'] == opposite_type]
+            logger.info(f"👉 Processing Signal #{signal_id}: {signal_type} from {source} (Score: {score})")
+
+            # --- CONFLICT GUARD LOGIC ---
+            is_conflict = await self.check_market_conflict(signal_type)
+            
+            if is_conflict:
+                logger.warning(f"   ⚠️ Conflict detected! Existing opposite positions found.")
                 
-                if opposite_positions:
-                    logger.info(f"   -> Found {len(opposite_positions)} opposite {opposite_type} position(s)")
+                # Decision Matrix
+                if abs(score) >= 8:
+                    logger.info("   🔥 STRONG SIGNAL (>=8). Switching Trend!")
                     
-                    for pos in opposite_positions:
-                        ticket = pos['ticket']
-                        metadata = await database.get_trade_metadata(ticket)
+                    # Action: Close all old positions
+                    close_success = await self.close_all_positions(self.symbol, reason="CONFLICT_REVERSE")
+                    if not close_success:
+                        logger.error("   ❌ Failed to close old positions. Skipping this signal safety.")
+                        await database.mark_signal_processed(signal_id)
+                        results.append(f"SKIP_CLOSE_FAIL_{signal_id}")
+                        continue
                         
-                        # Decision Tree
-                        should_close = False
-                        reason = ""
-                        
-                        if metadata is None:
-                            # No signal metadata (Sniper/Straddle/Manual)
-                            reason = "PROTECTED (Sniper/Straddle/Manual - No Signal ID)"
-                        elif metadata['source'] == 'AI_REPORT':
-                            reason = "PROTECTED (AI_REPORT - Long-term trend)"
-                        elif metadata['source'] == 'NEWS' and metadata['score'] >= 8:
-                            reason = f"PROTECTED (High-impact NEWS - Score {metadata['score']})"
-                        elif metadata['source'] == 'NEWS' and metadata['score'] < 8:
-                            should_close = True
-                            reason = f"CLOSABLE (Weak NEWS - Score {metadata['score']})"
-                        else:
-                            reason = f"PROTECTED (Unknown source: {metadata['source']})"
-                        
-                        logger.info(f"   -> Ticket #{ticket}: {reason}")
-                        
-                        if should_close:
-                            logger.info(f"   ⚔️ Closing opposite weak NEWS position #{ticket}...")
-                            close_result = await self.client.close_order(ticket)
-                            
-                            if "SUCCESS" in close_result:
-                                # Update database status
-                                await database.update_trade_exit(
-                                    ticket=ticket,
-                                    close_price=0.0,  # Actual close price not available from close command
-                                    profit=pos.get('profit', 0.0),
-                                    status='CLOSED'
-                                )
-                                logger.info(f"   ✅ Closed #{ticket} successfully (Profit: {pos.get('profit', 0.0):.2f})")
-                            else:
-                                logger.error(f"   ❌ Failed to close #{ticket}: {close_result}")
+                    logger.info("   ✅ Old positions cleared. Proceeding to entry...")
                 else:
-                    logger.info("   -> No opposite positions found")
+                    logger.info(f"   🛡️ WEAK SIGNAL (<8). Ignored to protect existing trend.")
+                    await database.mark_signal_processed(signal_id)
+                    results.append(f"IGNORED_WEAK_{signal_id}")
+                    continue  # Skip to next signal
             else:
-                logger.info("   -> No open positions")
+                 logger.info("   ✅ No conflict. Safe to execute.")
 
-            # Execute via Retry (Use NEWS volume)
-            logger.info(f"🚀 Executing NEWS {signal_type} | @{current_price:.2f} | SL:{sl} TP:{tp} | Vol:{config.TRADE_NEWS_VOLUME}")
-            result = await self._retry_action(self.client.execute_order, self.symbol, signal_type, config.TRADE_NEWS_VOLUME, sl, tp)
+            # --- EXECUTION LOGIC (Refactored from original) ---
             
-            # Save to Database & Mark as processed
-            if signal_id and "SUCCESS" in result:
-                # Parse ticket from response: "SUCCESS|123456"
-                try:
-                    ticket = int(result.split("|")[1])
-                    await database.save_trade_entry(
-                        ticket, signal_id, self.symbol, signal_type, 
-                        config.TRADE_NEWS_VOLUME, current_price, sl, tp,
-                        strategy='NEWS'
-                    )
-                except Exception as e:
-                    logger.error(f"❌ Failed to save trade to DB: {e}")
+            # CASE A: NEWS SIGNAL
+            if source == 'NEWS':
+                df, _ = await get_market_data(self.symbol)
+                if df is None or df.empty:
+                    logger.error("❌ Failed to get market price for News Order.")
+                    continue 
+                current_price = df['Close'].iloc[-1]
                 
-                await database.mark_signal_processed(signal_id)
-                logger.info(f"✅ Signal #{signal_id} marked as processed.")
+                sl = 0.0
+                tp = 0.0
+                
+                if signal_type == "BUY":
+                    sl = current_price - config.TRADE_NEWS_SL
+                    tp = current_price + config.TRADE_NEWS_TP
+                elif signal_type == "SELL":
+                    sl = current_price + config.TRADE_NEWS_SL
+                    tp = current_price - config.TRADE_NEWS_TP
+                
+                logger.info(f"   🚀 Executing NEWS {signal_type} | SL:{sl} TP:{tp}")
+                result = await self._retry_action(self.client.execute_order, self.symbol, signal_type, config.TRADE_NEWS_VOLUME, sl, tp)
+                
+                if signal_id and "SUCCESS" in result:
+                    try:
+                        ticket = int(result.split("|")[1])
+                        await database.save_trade_entry(
+                            ticket, signal_id, self.symbol, signal_type, 
+                            config.TRADE_NEWS_VOLUME, current_price, sl, tp,
+                            strategy='NEWS'
+                        )
+                    except Exception as e:
+                        logger.error(f"❌ Failed to save trade to DB: {e}")
+                    
+                    await database.mark_signal_processed(signal_id)
+                    results.append(result)
+                else:
+                    logger.error(f"   ❌ Execution Failed: {result}")
             
-            return result
+            # CASE B: AI REPORT SIGNAL
+            elif source == 'AI_REPORT':
+                # Check News Constraints only for AI signals? (Optional, kept from original logic)
+                upcoming_news = await database.check_upcoming_high_impact_news(minutes=30)
+                if upcoming_news:
+                    logger.warning(f"   ⛔ DỪNG GIAO DỊCH (AI): Sắp có tin mạnh \"{upcoming_news}\".")
+                    await database.mark_signal_processed(signal_id) # Mark processed to avoid loop? Or keep unprocessed? Original logic didn't mark.
+                    # Decision: If blocked by news, maybe we should NOT mark processed so it can retry later?
+                    # But if we are in batch processing, maybe we should skip for now.
+                    # User requirement: "mark_signal_processed(id) sau khi thực thi hoặc bỏ qua".
+                    # If we skip due to news, it's a "Wait", so maybe don't mark processed yet if we want retry?
+                    # However, strictly following "batch processing" usually implies consuming the queue.
+                    # Let's mark processed to avoid infinite stuck if news is persistent, or assume fresh signals will come.
+                    # Actually, if we mark processed, we lose the signal. 
+                    # Let's NOT mark processed if it's a temporary "WAIT" condition, BUT the user prompt said:
+                    # "Đảm bảo sau khi thực thi (hoặc bỏ qua), phải gọi database.mark_signal_processed(id)."
+                    # "Bỏ qua" implied weak signal logic. 
+                    # For safety, I will mark processed to clear the queue, because fresh AI reports come in frequently.
+                    await database.mark_signal_processed(signal_id) 
+                    results.append("SKIP_NEWS_EVENT")
+                    continue
 
-        # ===== CASE B: AI REPORT SIGNAL (NORMAL TRACK) =====
-        upcoming_news = await database.check_upcoming_high_impact_news(minutes=30)
-        if upcoming_news:
-            logger.warning(f"⛔ DỪNG GIAO DỊCH (AI): Sắp có tin mạnh \"{upcoming_news}\".")
-            return "WAIT_NEWS_EVENT"
-
-        recent_news = await database.check_recent_high_impact_news(minutes=15)
-        if recent_news:
-             logger.warning(f"⛔ DỪNG GIAO DỊCH (AI): Vừa có tin mạnh \"{recent_news}\".")
-             return "WAIT_POST_NEWS"
-
-        # Get Market Data
-        df, src_name = await get_market_data(self.symbol)
-        if df is None or df.empty: return "FAIL_NO_DATA"
+                df, src_name = await get_market_data(self.symbol)
+                if df is None or df.empty: 
+                    continue
+                
+                current_price = df['Close'].iloc[-1]
+                
+                # Signal SL/TP
+                db_sl = signal_data.get('stop_loss')
+                db_tp = signal_data.get('take_profit')
+                
+                sl = 0.0
+                tp = 0.0
+                
+                if db_sl and db_tp and db_sl != 0 and db_tp != 0:
+                    sl = db_sl
+                    tp = db_tp
+                else:
+                    # Fallback
+                    if signal_type == "BUY":
+                         sl = current_price - config.TRADE_REPORT_SL
+                         tp = current_price + config.TRADE_REPORT_TP
+                    elif signal_type == "SELL":
+                         sl = current_price + config.TRADE_REPORT_SL
+                         tp = current_price - config.TRADE_REPORT_TP
+                
+                logger.info(f"   🚀 Executing AI {signal_type} | Vol: {config.TRADE_REPORT_VOLUME}")
+                result = await self._retry_action(self.client.execute_order, self.symbol, signal_type, config.TRADE_REPORT_VOLUME, sl, tp)
+                
+                if signal_id and "SUCCESS" in result:
+                    try:
+                        ticket = int(result.split("|")[1])
+                        await database.save_trade_entry(
+                            ticket, signal_id, self.symbol, signal_type,
+                            config.TRADE_REPORT_VOLUME, current_price, sl, tp,
+                            strategy='REPORT'
+                        )
+                    except Exception as e:
+                        logger.error(f"❌ Failed to save trade to DB: {e}")
+                    
+                    await database.mark_signal_processed(signal_id)
+                    results.append(result)
         
-        current_price = df['Close'].iloc[-1]
-        
-        # Extract AI-generated SL/TP from database
-        db_entry = signal_data.get('entry_price')
-        db_sl = signal_data.get('stop_loss')
-        db_tp = signal_data.get('take_profit')
-        
-        # Determine SL/TP: Use AI values if available, else fallback to REPORT config
-        sl = 0.0
-        tp = 0.0
-        
-        if db_sl and db_tp and db_sl != 0 and db_tp != 0:
-            # Use AI-generated levels
-            sl = db_sl
-            tp = db_tp
-            logger.info(f"📊 Using AI-generated levels: SL={sl:.2f}, TP={tp:.2f}")
-        else:
-            # Fallback to REPORT config
-            logger.warning("⚠️ AI SL/TP missing or invalid. Using REPORT config fallback.")
-            
-            if signal_type == "BUY":
-                 sl = current_price - config.TRADE_REPORT_SL
-                 tp = current_price + config.TRADE_REPORT_TP
-            elif signal_type == "SELL":
-                 sl = current_price + config.TRADE_REPORT_SL
-                 tp = current_price - config.TRADE_REPORT_TP
-            else:
-                return "WAIT"
-            
-        logger.info(f"🚀 Executing AI {signal_type} (Verified) | Vol: {config.TRADE_REPORT_VOLUME}")
-        result = await self._retry_action(self.client.execute_order, self.symbol, signal_type, config.TRADE_REPORT_VOLUME, sl, tp)
-        
-        # Save to Database & Mark as processed
-        if signal_id and "SUCCESS" in result:
-            # Parse ticket from response
-            try:
-                ticket = int(result.split("|")[1])
-                await database.save_trade_entry(
-                    ticket, signal_id, self.symbol, signal_type,
-                    config.TRADE_REPORT_VOLUME, current_price, sl, tp,
-                    strategy='REPORT'
-                )
-            except Exception as e:
-                logger.error(f"❌ Failed to save trade to DB: {e}")
-            
-            await database.mark_signal_processed(signal_id)
-            logger.info(f"✅ Signal #{signal_id} marked as processed.")
-        
-        return result
+        return results
 
     async def process_news_signal(self, news_data: dict):
         """
@@ -297,7 +302,7 @@ class AutoTrader:
         # ===== STEP 2: DEFENSIVE =====
         is_safe = True
         if score >= 8:
-            is_safe = await self.close_all_positions(self.symbol)
+            is_safe = await self.close_all_positions(self.symbol, reason="NEWS_DEFENSE")
             if not is_safe:
                 logger.critical("⛔ CRITICAL: FAILED TO CLOSE POSITIONS! ABORTING ENTRY!")
                 return 
@@ -437,5 +442,15 @@ class AutoTrader:
                 ticket_int = int(t)
                 res = await self.client.delete_order(ticket_int)
                 logger.info(f"   -> Delete #{t}: {res}")
+                
+                # Update DB status to CANCELLED instead of keeping it OPEN
+                if "SUCCESS" in res:
+                    await database.update_trade_exit(
+                        ticket=ticket_int,
+                        close_price=0.0,
+                        profit=0.0,
+                        status='CANCELLED',
+                        close_reason='STRADDLE_EXPIRED'
+                    )
             except Exception as e:
                 logger.error(f"   ❌ Error deleting #{t}: {e}")

@@ -134,6 +134,7 @@ async def init_db() -> None:
                     profit REAL,
                     status TEXT DEFAULT 'OPEN',
                     strategy TEXT,    -- NEW: Strategy Name (NEWS, SNIPER, REPORT, CALENDAR)
+                    close_reason TEXT, -- NEW: Reason for closing (HIT_SL, HIT_TP, MANUAL, etc.)
                     open_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     close_time TIMESTAMP,
                     FOREIGN KEY (signal_id) REFERENCES trade_signals(id)
@@ -143,6 +144,10 @@ async def init_db() -> None:
             # Migration: Add columns if not exists
             try:
                 await conn.execute("ALTER TABLE trade_history ADD COLUMN strategy TEXT")
+            except Exception: pass
+            
+            try:
+                await conn.execute("ALTER TABLE trade_history ADD COLUMN close_reason TEXT")
             except Exception: pass
             
             await conn.commit()
@@ -438,6 +443,29 @@ async def mark_signal_processed(signal_id: int) -> bool:
         logger.error(f"Lỗi mark_signal_processed: {e}")
         return False
 
+async def get_all_valid_signals(symbol: str, ttl_minutes: int = 60) -> List[Dict[str, Any]]:
+    """
+    Lấy TẤT CẢ các tín hiệu chưa xử lý (is_processed = 0) từ NEWS và AI_REPORT.
+    Sắp xếp: Ưu tiên chất lượng (ABS score) trước, thời gian sau.
+    Input: symbol (str), ttl_minutes (int).
+    Output: List[Dict].
+    """
+    try:
+        async with get_db_connection() as conn:
+            async with conn.execute('''
+                SELECT * FROM trade_signals
+                WHERE symbol = ? 
+                AND is_processed = 0
+                AND source IN ('NEWS', 'AI_REPORT')
+                AND created_at >= datetime('now', ?)
+                ORDER BY ABS(score) DESC, created_at DESC
+            ''', (symbol, f'-{ttl_minutes} minutes')) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+    except Exception as e:
+        logger.error(f"Lỗi get_all_valid_signals: {e}")
+        return []
+
 async def get_events_for_trap(min_minutes: float = 1.6, max_minutes: float = 2.4) -> List[Dict[str, Any]]:
     """
     Lấy các tin USD High Impact sắp ra trong khoảng [min, max] phút tới.
@@ -510,17 +538,18 @@ async def get_open_trades() -> List[Dict[str, Any]]:
         logger.error(f"Lỗi get_open_trades: {e}")
         return []
 
-async def update_trade_exit(ticket: int, close_price: float, profit: float, status: str = 'CLOSED') -> bool:
+async def update_trade_exit(ticket: int, close_price: float, profit: float, status: str = 'CLOSED', close_reason: str = None) -> bool:
     """
     Cập nhật thông tin khi trade đóng.
+    Thêm close_reason để tracking (HIT_SL, HIT_TP, CONFLICT...).
     """
     try:
         async with get_db_connection() as conn:
             await conn.execute('''
                 UPDATE trade_history 
-                SET close_price = ?, profit = ?, status = ?, close_time = CURRENT_TIMESTAMP
+                SET close_price = ?, profit = ?, status = ?, close_reason = ?, close_time = CURRENT_TIMESTAMP
                 WHERE ticket = ?
-            ''', (close_price, profit, status, ticket))
+            ''', (close_price, profit, status, close_reason, ticket))
             await conn.commit()
             logger.info(f"💾 Updated trade exit: Ticket #{ticket} (Profit: {profit:.2f})")
             return True

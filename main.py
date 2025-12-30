@@ -136,9 +136,9 @@ async def start_scheduler():
     logger.info("📅 Thiết lập Economic Calendar Worker: Chạy mỗi 1 phút")
     scheduler.add_job(economic_worker.main, IntervalTrigger(minutes=1), max_instances=1, coalesce=True)
     
-    # --- AUTO TRADER (Each Hour at :02) ---
-    logger.info("🤖 Thiết lập Auto Trader: Chạy mỗi giờ (phút 02)")
-    scheduler.add_job(job_auto_trade, CronTrigger(minute='2'), max_instances=1, coalesce=True)
+    # --- AUTO TRADER (Run Frequent) ---
+    logger.info(f"🤖 Thiết lập Auto Trader: Chạy mỗi {config.SCHEDULER_INTERVAL_SECONDS} giây")
+    scheduler.add_job(job_auto_trade, IntervalTrigger(seconds=config.SCHEDULER_INTERVAL_SECONDS), max_instances=1, coalesce=True)
     
     # --- TRADE MONITOR (5 minutes) ---
     logger.info("💾 Thiết lập Trade Monitor: Sync trade status mỗi 5 phút")
