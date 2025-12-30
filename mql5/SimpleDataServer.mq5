@@ -315,8 +315,9 @@ string CheckPositions(string symbol) {
       if(m_position.SelectByIndex(i)) {
          string pos_sym = m_position.Symbol();
          if(symbol == "ALL" || pos_sym == symbol) {
-            string line = StringFormat("%I64d,%d,%.5f,%.2f,%.2f", 
-               m_position.Ticket(), m_position.PositionType(), m_position.PriceOpen(), m_position.Volume(), m_position.Profit());
+            string line = StringFormat("%I64d,%d,%.5f,%.2f,%.2f,%.5f,%.5f", 
+               m_position.Ticket(), m_position.PositionType(), m_position.PriceOpen(), m_position.Volume(), m_position.Profit(),
+               m_position.StopLoss(), m_position.TakeProfit());
             result += line + ";";
          }
       }
@@ -350,7 +351,10 @@ string GetTradeHistory(ulong ticket) {
             
             double total_profit = profit + swap + comm;
             
-            return "SUCCESS|" + DoubleToString(price) + "|" + DoubleToString(total_profit, 2);
+            double sl = HistoryDealGetDouble(deal_ticket, DEAL_SL);
+            double tp = HistoryDealGetDouble(deal_ticket, DEAL_TP);
+            
+            return "SUCCESS|" + DoubleToString(price) + "|" + DoubleToString(total_profit, 2) + "|" + DoubleToString(sl) + "|" + DoubleToString(tp);
          }
       }
    }
