@@ -267,6 +267,10 @@ class MT5DataClient:
                 if len(parts) >= 5:
                     result['sl'] = float(parts[3])
                     result['tp'] = float(parts[4])
+                
+                # CẬP NHẬT MỚI: Lấy Close Time (DEAL_TIME)
+                if len(parts) >= 6:
+                    result['close_time'] = int(parts[5]) # Timestamp
                     
                 return result
                 

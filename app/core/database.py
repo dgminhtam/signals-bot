@@ -538,28 +538,43 @@ async def get_open_trades() -> List[Dict[str, Any]]:
         logger.error(f"Lỗi get_open_trades: {e}")
         return []
 
-async def update_trade_exit(ticket: int, close_price: float, profit: float, status: str = 'CLOSED', close_reason: str = None, sl: float = None, tp: float = None) -> bool:
+async def update_trade_exit(ticket: int, close_price: float, profit: float, status: str = 'CLOSED', close_reason: str = None, sl: float = None, tp: float = None, close_time: Any = None) -> bool:
     """
     Cập nhật thông tin khi trade đóng.
-    Thêm close_reason để tracking (HIT_SL, HIT_TP, CONFLICT...).
-    Cập nhật SL/TP chính xác từ MT5 nếu có.
+    Thêm close_reason và SL/TP.
+    close_time: Có thể là int (timestamp) hoặc string. Nếu None, dùng CURRENT_TIMESTAMP.
     """
     try:
         async with get_db_connection() as conn:
-            # Xây dựng câu query dynamic hoặc update luôn (ở đây ta update luôn nếu có giá trị)
-            # COALESCE không hoạt động tốt với UPDATE SET dynamic trong chuỗi đơn giản này nếu sl/tp là None.
-            # Ta dùng logic Python để build SET clause hoặc update full nếu param có.
-            
-            # Tuy nhiên, để đơn giản và hiệu quả, ta dùng logic SQL: SET sl = COALESCE(?, sl), tp = COALESCE(?, tp)
-            # Nhưng sqlite param ? bind None sẽ thành NULL, và COALESCE(NULL, sl) -> sl (giữ nguyên).
-            # Vậy ta truyền sl, tp vào.
-            
-            await conn.execute('''
+            # Build query dynamic cho close_time
+            sql = '''
                 UPDATE trade_history 
-                SET close_price = ?, profit = ?, status = ?, close_reason = ?, close_time = CURRENT_TIMESTAMP,
+                SET close_price = ?, profit = ?, status = ?, close_reason = ?,
                     sl = COALESCE(?, sl), tp = COALESCE(?, tp)
-                WHERE ticket = ?
-            ''', (close_price, profit, status, close_reason, sl, tp, ticket))
+            '''
+            params = [close_price, profit, status, close_reason, sl, tp]
+            
+            if close_time is not None:
+                # Nếu là số (timestamp từ MT5), convert sang string YYYY-MM-DD HH:MM:SS
+                # SQLite mặc định store datetime string hoặc unix epoch (tùy convention).
+                # Convention file này: 'YYYY-MM-DD HH:MM:SS'
+                val = close_time
+                if isinstance(close_time, (int, float)):
+                    # Convert timestamp -> string Local (vì db dùng date('now', 'localtime') ở chỗ khác nên phải cẩn thận)
+                    # Tuy nhiên tốt nhất lưu UTC hoặc string chuẩn.
+                    # Current code uses 'CURRENT_TIMESTAMP' which is UTC string.
+                    # Convert to datetime string
+                    val = datetime.fromtimestamp(close_time).strftime('%Y-%m-%d %H:%M:%S')
+                    
+                sql += ", close_time = ?"
+                params.append(val)
+            else:
+                sql += ", close_time = CURRENT_TIMESTAMP"
+                
+            sql += " WHERE ticket = ?"
+            params.append(ticket)
+            
+            await conn.execute(sql, tuple(params))
             
             await conn.commit()
             logger.info(f"💾 Updated trade exit: Ticket #{ticket} (Profit: {profit:.2f})")

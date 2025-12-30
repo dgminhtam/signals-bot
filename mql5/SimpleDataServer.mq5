@@ -353,8 +353,9 @@ string GetTradeHistory(ulong ticket) {
             
             double sl = HistoryDealGetDouble(deal_ticket, DEAL_SL);
             double tp = HistoryDealGetDouble(deal_ticket, DEAL_TP);
+            long close_time = HistoryDealGetInteger(deal_ticket, DEAL_TIME);
             
-            return "SUCCESS|" + DoubleToString(price) + "|" + DoubleToString(total_profit, 2) + "|" + DoubleToString(sl) + "|" + DoubleToString(tp);
+            return "SUCCESS|" + DoubleToString(price) + "|" + DoubleToString(total_profit, 2) + "|" + DoubleToString(sl) + "|" + DoubleToString(tp) + "|" + IntegerToString(close_time);
          }
       }
    }

@@ -83,6 +83,7 @@ async def main():
                     real_profit = history_data.get('profit', 0.0)
                     real_sl = history_data.get('sl')
                     real_tp = history_data.get('tp')
+                    real_close_time = history_data.get('close_time') # Timestamp or None
                     
                     # Heuristic Logic for Close Reason
                     db_sl = float(trade.get('sl') or 0.0)
@@ -110,7 +111,8 @@ async def main():
                         status='CLOSED',
                         close_reason=close_reason,
                         sl=real_sl,
-                        tp=real_tp
+                        tp=real_tp,
+                        close_time=real_close_time
                     )
                     closed_count += 1
                     logger.info(f"      ✅ Synced CLOSED trade #{ticket}: Profit={real_profit} ({close_reason})")
