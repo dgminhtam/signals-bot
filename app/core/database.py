@@ -581,8 +581,6 @@ async def update_trade_exit(ticket: int, close_price: float, profit: float, stat
             if tp is not None:
                 sql += ", tp = ?"
                 params.append(tp)
-                
-            sql += ", close_time = COALESCE(close_time, CURRENT_TIMESTAMP)" # Logic fallback cho chắc chắn
             
             # CHỐT CÂU LỆNH WHERE
             sql += " WHERE ticket = ?"
