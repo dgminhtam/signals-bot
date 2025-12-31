@@ -242,6 +242,8 @@ string ExecuteTrade(string symbol, string type, double vol, double sl, double tp
    else if (type == "SELL") order_type = ORDER_TYPE_SELL;
    else if (type == "BUY_STOP") { order_type = ORDER_TYPE_BUY_STOP; is_pending = true; }
    else if (type == "SELL_STOP") { order_type = ORDER_TYPE_SELL_STOP; is_pending = true; }
+   else if (type == "BUY_LIMIT") { order_type = ORDER_TYPE_BUY_LIMIT; is_pending = true; }
+   else if (type == "SELL_LIMIT") { order_type = ORDER_TYPE_SELL_LIMIT; is_pending = true; }
    else return "ERROR|INVALID_TYPE";
    
    if(!m_symbol.Name(symbol)) return "ERROR|INVALID_SYMBOL";

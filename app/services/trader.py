@@ -211,18 +211,6 @@ class AutoTrader:
                 upcoming_news = await database.check_upcoming_high_impact_news(minutes=30)
                 if upcoming_news:
                     logger.warning(f"   ⛔ DỪNG GIAO DỊCH (AI): Sắp có tin mạnh \"{upcoming_news}\".")
-                    await database.mark_signal_processed(signal_id) # Mark processed to avoid loop? Or keep unprocessed? Original logic didn't mark.
-                    # Decision: If blocked by news, maybe we should NOT mark processed so it can retry later?
-                    # But if we are in batch processing, maybe we should skip for now.
-                    # User requirement: "mark_signal_processed(id) sau khi thực thi hoặc bỏ qua".
-                    # If we skip due to news, it's a "Wait", so maybe don't mark processed yet if we want retry?
-                    # However, strictly following "batch processing" usually implies consuming the queue.
-                    # Let's mark processed to avoid infinite stuck if news is persistent, or assume fresh signals will come.
-                    # Actually, if we mark processed, we lose the signal. 
-                    # Let's NOT mark processed if it's a temporary "WAIT" condition, BUT the user prompt said:
-                    # "Đảm bảo sau khi thực thi (hoặc bỏ qua), phải gọi database.mark_signal_processed(id)."
-                    # "Bỏ qua" implied weak signal logic. 
-                    # For safety, I will mark processed to clear the queue, because fresh AI reports come in frequently.
                     await database.mark_signal_processed(signal_id) 
                     results.append("SKIP_NEWS_EVENT")
                     continue
@@ -233,9 +221,10 @@ class AutoTrader:
                 
                 current_price = df['Close'].iloc[-1]
                 
-                # Signal SL/TP
+                # Signal SL/TP/Entry
                 db_sl = signal_data.get('stop_loss')
                 db_tp = signal_data.get('take_profit')
+                db_entry = signal_data.get('entry_price')
                 
                 sl = 0.0
                 tp = 0.0
@@ -252,8 +241,26 @@ class AutoTrader:
                          sl = current_price + config.TRADE_REPORT_SL
                          tp = current_price - config.TRADE_REPORT_TP
                 
-                logger.info(f"   🚀 Executing AI {signal_type} | Vol: {config.TRADE_REPORT_VOLUME}")
-                result = await self._retry_action(self.client.execute_order, self.symbol, signal_type, config.TRADE_REPORT_VOLUME, sl, tp)
+                # Xác định Entry Price cho lệnh Pending
+                exec_price = 0.0
+                if "LIMIT" in signal_type or "STOP" in signal_type:
+                    if db_entry and db_entry > 0:
+                        exec_price = db_entry
+                    else:
+                        logger.error(f"❌ Lệnh {signal_type} thiếu Entry Price. Bỏ qua.")
+                        await database.mark_signal_processed(signal_id)
+                        continue
+                
+                logger.info(f"   🚀 Executing AI {signal_type} | Price: {exec_price} | Vol: {config.TRADE_REPORT_VOLUME}")
+                result = await self._retry_action(
+                    self.client.execute_order, 
+                    self.symbol, 
+                    signal_type, 
+                    config.TRADE_REPORT_VOLUME, 
+                    sl, 
+                    tp,
+                    exec_price
+                )
                 
                 if signal_id and "SUCCESS" in result:
                     try:

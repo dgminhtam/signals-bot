@@ -229,15 +229,21 @@ async def main():
             
             # Bridge -> AutoTrader
             tr_signal = analysis_result.get('trade_signal', {})
-            raw_tr_type = tr_signal.get('order_type', 'WAIT').upper()
+            # Logic xử lý Order Type mới
+            raw_tr_type = tr_signal.get('order_type', 'WAIT').upper().replace(' ', '_')
+            
             if "BUY" in raw_tr_type:
-                tr_type = "BUY"
+                if "LIMIT" in raw_tr_type: tr_type = "BUY_LIMIT"
+                elif "STOP" in raw_tr_type: tr_type = "BUY_STOP"
+                else: tr_type = "BUY"
             elif "SELL" in raw_tr_type:
-                tr_type = "SELL"
+                if "LIMIT" in raw_tr_type: tr_type = "SELL_LIMIT"
+                elif "STOP" in raw_tr_type: tr_type = "SELL_STOP"
+                else: tr_type = "SELL"
             else:
                 tr_type = "WAIT"
                 
-            if tr_type in ['BUY', 'SELL']:
+            if tr_type in ['BUY', 'SELL', 'BUY_LIMIT', 'SELL_LIMIT', 'BUY_STOP', 'SELL_STOP']:
                 logger.info(f"🔄 Syncing signal {tr_type} to AutoTrader...")
                 
                 # Extract AI-generated price levels
