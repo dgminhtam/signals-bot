@@ -141,6 +141,12 @@ class MT5DataClient:
                     raise ConnectionResetError("Empty response, connection closed by peer")
                     
                 response = chunk.decode('utf-8').strip()
+                
+                # --- FIX: Chủ động đóng kết nối sau mỗi lệnh thành công ---
+                # Điều này đồng bộ với hành vi của EA (Server đóng ngay sau khi gửi)
+                await self.disconnect()
+                # ---------------------------------------------------------
+                
                 return response
                 
             except (ConnectionError, OSError, asyncio.TimeoutError) as e:
