@@ -2,6 +2,7 @@ import asyncio
 import pandas as pd
 import io
 import time
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
 
 class MT5DataClient:
@@ -270,7 +271,17 @@ class MT5DataClient:
                 
                 # CẬP NHẬT MỚI: Lấy Close Time (DEAL_TIME)
                 if len(parts) >= 6:
-                    result['close_time'] = int(parts[5]) # Timestamp
+                    raw_time = int(parts[5])
+                    result['close_time'] = raw_time
+                    
+                    # Convert để kiểm tra
+                    utc_dt = datetime.fromtimestamp(raw_time, tz=timezone.utc)
+                    local_dt = datetime.fromtimestamp(raw_time)
+                    
+                    print(f"\n🔍 [DEBUG TIME] Ticket #{ticket}")
+                    print(f"   ➤ Raw Timestamp: {raw_time}")
+                    print(f"   ➤ UTC Time     : {utc_dt}")
+                    print(f"   ➤ Local Time   : {local_dt}\n")
                     
                 return result
                 
