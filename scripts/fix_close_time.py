@@ -63,12 +63,16 @@ async def fix_close_time():
             )
             
             # Log success
-            time_str = "N/A"
             if mt5_close_time:
                  import datetime
-                 time_str = datetime.datetime.fromtimestamp(mt5_close_time).strftime('%Y-%m-%d %H:%M:%S')
+                 utc_str = datetime.datetime.fromtimestamp(mt5_close_time, tz=datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+                 local_str = datetime.datetime.fromtimestamp(mt5_close_time).strftime('%Y-%m-%d %H:%M:%S')
                  
-            logger.info(f"✅ Updated #{ticket}: Time={time_str}, SL={mt5_sl}, TP={mt5_tp}")
+                 logger.info(f"✅ Ticket #{ticket} Fixed.")
+                 logger.info(f"   -> DB Saved (UTC): {utc_str}")
+                 logger.info(f"   -> Real Time (VN): {local_str}")
+            else:
+                 logger.info(f"✅ Updated #{ticket} (No Time Data)")
             updated_count += 1
         else:
             logger.error(f"❌ Ticket #{ticket}: Not found in MT5 History.")
