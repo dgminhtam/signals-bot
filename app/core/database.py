@@ -671,3 +671,33 @@ async def get_trade_metadata(ticket: int) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"‚ùå L·ªói get_trade_metadata for ticket {ticket}: {e}.")
         return None
+a s y n c   d e f   s y n c _ t r a d e _ d a t a ( t i c k e t :   i n t ,   o p e n _ p r i c e :   f l o a t ,   c l o s e _ p r i c e :   f l o a t ,   p r o f i t :   f l o a t ,   s l :   f l o a t ,   t p :   f l o a t ,   o p e n _ t i m e :   i n t ,   c l o s e _ t i m e :   i n t )   - >   b o o l :  
+         " " "  
+         ƒ ê · ª  n g   b · ª "!  t o √ † n   d i · ª ! n   d · ª Ø   l i · ª ! u   t r a d e   t · ª ´   M T 5   v · ª Å   D B   ( F u l l   S y n c ) .  
+         T · ª ±   ƒ  · ª "!n g   c o n v e r t   t i m e s t a m p   s a n g   U T C .  
+         " " "  
+         t r y :  
+                 a s y n c   w i t h   g e t _ d b _ c o n n e c t i o n ( )   a s   c o n n :  
+                         s q l   =   ' ' '  
+                                 U P D A T E   t r a d e _ h i s t o r y    
+                                 S E T   o p e n _ p r i c e = ? ,   c l o s e _ p r i c e = ? ,   p r o f i t = ? ,   s l = ? ,   t p = ? ,   o p e n _ t i m e = ? ,   c l o s e _ t i m e = ?  
+                                 W H E R E   t i c k e t = ?  
+                         ' ' '  
+                          
+                         #   H e l p e r   c o n v e r t   t i m e s t a m p   s a n g   U T C   S t r i n g  
+                         d e f   t o _ u t c _ s t r ( t s ) :  
+                                 i f   n o t   t s   o r   t s   = =   0 :   r e t u r n   N o n e  
+                                 r e t u r n   d a t e t i m e . f r o m t i m e s t a m p ( t s ,   t z = t i m e z o n e . u t c ) . s t r f t i m e ( ' % Y - % m - % d   % H : % M : % S ' )  
+  
+                         o _ t i m e _ s t r   =   t o _ u t c _ s t r ( o p e n _ t i m e )  
+                         c _ t i m e _ s t r   =   t o _ u t c _ s t r ( c l o s e _ t i m e )  
+                          
+                         p a r a m s   =   ( o p e n _ p r i c e ,   c l o s e _ p r i c e ,   p r o f i t ,   s l ,   t p ,   o _ t i m e _ s t r ,   c _ t i m e _ s t r ,   t i c k e t )  
+                          
+                         a w a i t   c o n n . e x e c u t e ( s q l ,   p a r a m s )  
+                         a w a i t   c o n n . c o m m i t ( )  
+                         r e t u r n   T r u e  
+         e x c e p t   E x c e p t i o n   a s   e :  
+                 l o g g e r . e r r o r ( f " ‚ ù R  L · ª  i   s y n c _ t r a d e _ d a t a   # { t i c k e t } :   { e } " )  
+                 r e t u r n   F a l s e  
+ 

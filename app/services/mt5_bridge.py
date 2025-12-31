@@ -252,45 +252,38 @@ class MT5DataClient:
 
     async def get_trade_history(self, ticket: int) -> Optional[Dict]:
         """
-        Lấy thông tin lệnh đã đóng từ lịch sử: HISTORY|TICKET
-        Trả về: {'close_price': float, 'profit': float, 'status': 'CLOSED', 'sl': float, 'tp': float} hoặc None
+        Lấy thông tin lệnh đã đóng từ lịch sử.
+        Format mới: SUCCESS|O_PRICE|C_PRICE|PROFIT|SL|TP|O_TIME|C_TIME
         """
         command = f"HISTORY|{ticket}"
         try:
             response = await self._send_simple_command(command)
             
-            # Xử lý response
             if response and response.startswith("SUCCESS"):
                 parts = response.split("|")
                 
-                # Mặc định (Format cũ)
+                # Kiểm tra độ dài tối thiểu (SUCCESS + 3 fields min)
+                if len(parts) < 4: return None
+
                 result = {
-                    'close_price': float(parts[1]) if len(parts) > 1 else 0.0,
-                    'profit': float(parts[2]) if len(parts) > 2 else 0.0,
+                    'open_price': float(parts[1]) if len(parts) > 1 else 0.0,
+                    'close_price': float(parts[2]) if len(parts) > 2 else 0.0,
+                    'profit': float(parts[3]) if len(parts) > 3 else 0.0,
                     'status': 'CLOSED'
                 }
                 
-                # CẬP NHẬT MỚI: Lấy thêm SL/TP nếu có (Format mới từ EA)
-                if len(parts) >= 5:
-                    result['sl'] = float(parts[3])
-                    result['tp'] = float(parts[4])
+                # Parse SL/TP
+                if len(parts) > 5:
+                    result['sl'] = float(parts[4])
+                    result['tp'] = float(parts[5])
                 
-                # CẬP NHẬT MỚI: Lấy Close Time (DEAL_TIME)
-                if len(parts) >= 6:
-                    raw_time = int(parts[5])
-                    result['close_time'] = raw_time
-                    
-                    # Convert để kiểm tra
-                    utc_dt = datetime.fromtimestamp(raw_time, tz=timezone.utc)
-                    local_dt = datetime.fromtimestamp(raw_time)
-                    
-                    print(f"\n🔍 [DEBUG TIME] Ticket #{ticket}")
-                    print(f"   ➤ Raw Timestamp: {raw_time}")
-                    print(f"   ➤ UTC Time     : {utc_dt}")
-                    print(f"   ➤ Local Time   : {local_dt}\n")
-                    
+                # Parse Time (Open & Close)
+                if len(parts) > 7:
+                    result['open_time'] = int(parts[6])
+                    result['close_time'] = int(parts[7])
+                
                 return result
-                
+            
             return None
             
         except Exception as e:
