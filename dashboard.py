@@ -37,7 +37,13 @@ def load_data():
         date_cols = ['open_time', 'close_time']
         for col in date_cols:
             if col in df.columns:
-                df[col] = pd.to_datetime(df[col], errors='coerce')
+                # 1. Chuyển sang datetime (ép kiểu UTC)
+                df[col] = pd.to_datetime(df[col], errors='coerce', utc=True)
+                
+                # 2. Convert sang giờ Việt Nam ('Asia/Ho_Chi_Minh')
+                # Lưu ý: Cần đảm bảo df[col] không bị Null hết
+                if not df[col].isnull().all():
+                     df[col] = df[col].dt.tz_convert('Asia/Ho_Chi_Minh').dt.tz_localize(None)
         
         # Fill missing strategy
         if 'strategy' in df.columns:
