@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from typing import List, Dict, Optional, Any
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from app.core import config 
 
 logger = config.logger
@@ -542,40 +542,53 @@ async def update_trade_exit(ticket: int, close_price: float, profit: float, stat
     """
     Cập nhật thông tin khi trade đóng.
     Thêm close_reason và SL/TP.
-    close_time: Có thể là int (timestamp) hoặc string. Nếu None, dùng CURRENT_TIMESTAMP.
+    close_time: Có thể là int (timestamp) hoặc string.
     """
     try:
         async with get_db_connection() as conn:
-            # Build query dynamic cho close_time
+            # ... (Phần khai báo SQL update giữ nguyên) ...
             sql = '''
                 UPDATE trade_history 
-                SET close_price = ?, profit = ?, status = ?, close_reason = ?,
-                    sl = COALESCE(?, sl), tp = COALESCE(?, tp)
+                SET close_price = ?, profit = ?, status = ?, close_reason = ?
             '''
-            params = [close_price, profit, status, close_reason, sl, tp]
+            params = [close_price, profit, status, close_reason]
             
+            # --- XỬ LÝ TIME UTC ---
             if close_time is not None:
-                # Nếu là số (timestamp từ MT5), convert sang string YYYY-MM-DD HH:MM:SS
-                # SQLite mặc định store datetime string hoặc unix epoch (tùy convention).
-                # Convention file này: 'YYYY-MM-DD HH:MM:SS'
-                val = close_time
+                # Chuyển Timestamp sang UTC String
                 if isinstance(close_time, (int, float)):
-                    # Convert timestamp -> string Local (vì db dùng date('now', 'localtime') ở chỗ khác nên phải cẩn thận)
-                    # Tuy nhiên tốt nhất lưu UTC hoặc string chuẩn.
-                    # Current code uses 'CURRENT_TIMESTAMP' which is UTC string.
-                    # Convert to datetime string
-                    val = datetime.fromtimestamp(close_time).strftime('%Y-%m-%d %H:%M:%S')
+                    utc_time = datetime.fromtimestamp(close_time, tz=timezone.utc)
+                    val = utc_time.strftime('%Y-%m-%d %H:%M:%S')
                     
-                sql += ", close_time = ?"
-                params.append(val)
+                    sql += ", close_time = ?"
+                    params.append(val)
+                else:
+                    # Trường hợp đã là string
+                    sql += ", close_time = ?"
+                    params.append(close_time)
             else:
-                sql += ", close_time = CURRENT_TIMESTAMP"
+                # Fallback: Dùng giờ hiện tại của DB (thường là UTC nếu config đúng, hoặc Local)
+                # Tốt nhất nên dùng datetime.now(timezone.utc) từ Python luôn để đồng bộ
+                now_utc = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+                sql += ", close_time = ?"
+                params.append(now_utc)
                 
+            # ... (Phần xử lý SL/TP giữ nguyên) ...
+            if sl is not None:
+                sql += ", sl = ?"
+                params.append(sl)
+            
+            if tp is not None:
+                sql += ", tp = ?"
+                params.append(tp)
+                
+            sql += ", close_time = COALESCE(close_time, CURRENT_TIMESTAMP)" # Logic fallback cho chắc chắn
+            
+            # CHỐT CÂU LỆNH WHERE
             sql += " WHERE ticket = ?"
             params.append(ticket)
             
             await conn.execute(sql, tuple(params))
-            
             await conn.commit()
             logger.info(f"💾 Updated trade exit: Ticket #{ticket} (Profit: {profit:.2f})")
             return True
