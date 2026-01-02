@@ -171,3 +171,10 @@ TRADE_SNIPER_TP = float(os.getenv("TRADE_SNIPER_TP", "20.0"))
 TRADE_CALENDAR_SL = float(os.getenv("TRADE_CALENDAR_SL", "10.0"))
 TRADE_CALENDAR_TP = float(os.getenv("TRADE_CALENDAR_TP", "20.0"))
 TRADE_CALENDAR_DIST = float(os.getenv("TRADE_CALENDAR_DIST", "2.0"))
+
+# --- STRATEGY TOGGLES (FEATURE FLAGS) ---
+# Bật/Tắt từng chiến lược cụ thể (Mặc định là True nếu không set trong .env)
+ENABLE_STRATEGY_REPORT = os.getenv("ENABLE_STRATEGY_REPORT", "true").lower() == "true"
+ENABLE_STRATEGY_NEWS = os.getenv("ENABLE_STRATEGY_NEWS", "true").lower() == "true"     # Xử lý tin tức chung (Defensive)
+ENABLE_STRATEGY_SNIPER = os.getenv("ENABLE_STRATEGY_SNIPER", "true").lower() == "true" # Bắn tỉa theo tin (Offensive)
+ENABLE_STRATEGY_CALENDAR = os.getenv("ENABLE_STRATEGY_CALENDAR", "true").lower() == "true" # Trap Trading (Straddle)
