@@ -110,6 +110,11 @@ class EconomicCalendarService:
                     if impact != 'High': 
                         continue
 
+                    # --- NEW: Chỉ lấy tin USD ---
+                    if currency != 'USD':
+                        continue
+                    # ----------------------------
+
                     # JSON date -> UTC
                     date_str = item.get('date')
                     dt = date_parser.parse(date_str)

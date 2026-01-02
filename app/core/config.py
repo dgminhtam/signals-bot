@@ -53,7 +53,8 @@ KEYWORDS_DIRECT = [r"Gold", r"XAU", r"XAUUSD", r"Precious Metal", r"Vàng", r"Co
 KEYWORDS_CORRELATION = [
     r"USD", r"DXY", r"Greenback", r"Dollar",
     r"Fed", r"FOMC", r"Powell", r"Interest Rate",
-    r"CPI", r"PPI", r"NFP", r"GDP", r"EUR", r"GBP", r"JPY"
+    r"CPI", r"PPI", r"NFP", r"GDP", 
+    r"Bond Yield", r"Treasury", r"Inflation", r"Jobless Claims"
 ]
 
 # --- NEWS SOURCES CONFIG ---
