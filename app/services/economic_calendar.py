@@ -324,25 +324,43 @@ class EconomicCalendarService:
 
             # --- TRAP TRADING (STRADDLE) ---
             if config.ENABLE_STRATEGY_CALENDAR:
-                # Check for High Impact USD news in 2 minutes
+                # Check for High Impact news in 2 minutes
                 trap_events = await database.get_events_for_trap(min_minutes=1.5, max_minutes=2.5)
                 if trap_events:
-                    logger.info(f"⏰ Pre-News Alert! {len(trap_events)} High Impact USD event(s) in ~2 mins.")
-                    for ev in trap_events:
-                        logger.info(f"   -> Setup Trap for: {ev['title']}")
+                    logger.info(f"⏰ Pre-News Alert! {len(trap_events)} High Impact event(s) in ~2 mins.")
                     
-                    # Activate AutoTrader Trap
-                    try:
-                        trader = AutoTrader("XAUUSD") # Default XAUUSD for News Trap
-                        # Use centralized CALENDAR config (no parameters = use defaults)
-                        tickets = await trader.place_straddle_orders()
+                    # Determine which symbols are affected by these events
+                    target_symbols = set()
+                    for ev in trap_events:
+                        evt_currency = ev.get('currency', '')
+                        logger.info(f"   -> Event: {ev['title']} ({evt_currency})")
                         
-                        if tickets:
-                            logger.info(f"   ✅ Trap Placed: {tickets}. Scheduling cleanup in 15m.")
-                            # Schedule Cleanup Task (Fire & Forget)
-                            asyncio.create_task(self._schedule_cleanup(trader, tickets, delay=15*60))
-                    except Exception as e:
-                        logger.error(f"   ❌ Trap Setup Failed: {e}")
+                        # Match event currency to trading symbols
+                        for symbol in config.TRADING_SYMBOLS:
+                            # Standard pairs: EURUSD, GBPJPY -> check if currency in symbol
+                            if evt_currency in symbol:
+                                target_symbols.add(symbol)
+                            # Special: XAU trades (Gold affected by USD)
+                            elif 'XAU' in symbol and evt_currency == 'USD':
+                                target_symbols.add(symbol)
+                    
+                    if target_symbols:
+                        logger.info(f"   🎯 Affected Symbols: {target_symbols}")
+                        
+                        # Execute straddle for each affected symbol
+                        for symbol in target_symbols:
+                            try:
+                                logger.info(f"   🕸️ Activating Trap for {symbol}...")
+                                trader = AutoTrader(symbol=symbol)
+                                tickets = await trader.place_straddle_orders()
+                                
+                                if tickets:
+                                    logger.info(f"      ✅ Trap Placed: {tickets}. Scheduling cleanup in 15m.")
+                                    asyncio.create_task(self._schedule_cleanup(trader, tickets, delay=15*60))
+                            except Exception as e:
+                                logger.error(f"      ❌ Trap Setup Failed for {symbol}: {e}")
+                    else:
+                        logger.info("   ⚠️ No trading symbols affected by these events.")
             else:
                  logger.debug("   ⏸️ Calendar Strategy (Trap) is DISABLED.")
                     
