@@ -242,6 +242,8 @@ string ExecuteTrade(string symbol, string type, double vol, double sl, double tp
    else if (type == "SELL") order_type = ORDER_TYPE_SELL;
    else if (type == "BUY_STOP") { order_type = ORDER_TYPE_BUY_STOP; is_pending = true; }
    else if (type == "SELL_STOP") { order_type = ORDER_TYPE_SELL_STOP; is_pending = true; }
+   else if (type == "BUY_LIMIT") { order_type = ORDER_TYPE_BUY_LIMIT; is_pending = true; }
+   else if (type == "SELL_LIMIT") { order_type = ORDER_TYPE_SELL_LIMIT; is_pending = true; }
    else return "ERROR|INVALID_TYPE";
    
    if(!m_symbol.Name(symbol)) return "ERROR|INVALID_SYMBOL";
@@ -338,28 +340,52 @@ string DeleteOrder(ulong ticket) {
 string GetTradeHistory(ulong ticket) {
    if(!HistorySelectByPosition(ticket)) return "ERROR|HISTORY_NOT_FOUND";
    
+   double open_price = 0.0;
+   long open_time = 0;
+   double close_price = 0.0;
+   long close_time = 0;
+   double total_profit = 0.0;
+   double sl = 0.0;
+   double tp = 0.0;
+   
    int total = HistoryDealsTotal();
    for(int i = 0; i < total; i++) {
       ulong deal_ticket = HistoryDealGetTicket(i);
       if(deal_ticket > 0) {
          long entry = HistoryDealGetInteger(deal_ticket, DEAL_ENTRY);
+         
+         // 1. Tìm Deal Vào (Entry IN) để lấy Open Price/Time
+         if(entry == DEAL_ENTRY_IN) {
+            open_price = HistoryDealGetDouble(deal_ticket, DEAL_PRICE);
+            open_time = HistoryDealGetInteger(deal_ticket, DEAL_TIME);
+         }
+         
+         // 2. Tìm Deal Ra (Entry OUT) để lấy Close Price/Time/Profit
          if(entry == DEAL_ENTRY_OUT || entry == DEAL_ENTRY_INOUT) {
-            double price = HistoryDealGetDouble(deal_ticket, DEAL_PRICE);
+            close_price = HistoryDealGetDouble(deal_ticket, DEAL_PRICE);
+            close_time = HistoryDealGetInteger(deal_ticket, DEAL_TIME);
+            
             double profit = HistoryDealGetDouble(deal_ticket, DEAL_PROFIT);
             double swap = HistoryDealGetDouble(deal_ticket, DEAL_SWAP);
             double comm = HistoryDealGetDouble(deal_ticket, DEAL_COMMISSION);
+            total_profit += profit + swap + comm;
             
-            double total_profit = profit + swap + comm;
-            
-            double sl = HistoryDealGetDouble(deal_ticket, DEAL_SL);
-            double tp = HistoryDealGetDouble(deal_ticket, DEAL_TP);
-            long close_time = HistoryDealGetInteger(deal_ticket, DEAL_TIME);
-            
-            return "SUCCESS|" + DoubleToString(price) + "|" + DoubleToString(total_profit, 2) + "|" + DoubleToString(sl) + "|" + DoubleToString(tp) + "|" + IntegerToString(close_time);
+            // SL/TP thường được ghi nhận ở deal đóng
+            sl = HistoryDealGetDouble(deal_ticket, DEAL_SL);
+            tp = HistoryDealGetDouble(deal_ticket, DEAL_TP);
          }
       }
    }
-   return "ERROR|HISTORY_NOT_FOUND";
+   
+   // Format trả về: SUCCESS|O_PRICE|C_PRICE|PROFIT|SL|TP|O_TIME|C_TIME
+   return "SUCCESS|" + 
+          DoubleToString(open_price) + "|" + 
+          DoubleToString(close_price) + "|" + 
+          DoubleToString(total_profit, 2) + "|" + 
+          DoubleToString(sl) + "|" + 
+          DoubleToString(tp) + "|" + 
+          IntegerToString(open_time) + "|" + 
+          IntegerToString(close_time);
 }
 
 ENUM_TIMEFRAMES StringToTimeframe(string tf) {

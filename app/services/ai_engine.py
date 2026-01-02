@@ -115,6 +115,43 @@ async def analyze_market(
             if key not in result_json:
                 result_json[key] = "N/A" if key != "sentiment_score" else 0
 
+        # --- ENFORCE R:R 1:2 LOGIC ---
+        signal = result_json.get('trade_signal', {})
+        if signal:
+            order_type = signal.get('order_type', '').upper()
+            entry = float(signal.get('entry_price', 0) or 0)
+            sl = float(signal.get('sl', 0) or 0)
+
+            if entry > 0 and sl > 0 and abs(entry - sl) > 0:
+                risk = abs(entry - sl)
+                
+                # Minimum risk filter (để tránh SL quá ngắn do lỗi AI)
+                # Ví dụ: Nếu risk < 2 giá (20 pips), set cứng risk = 2 giá
+                if risk < 2.0: risk = 2.0
+
+                if "BUY" in order_type:
+                    # SL phải thấp hơn Entry
+                    if sl >= entry: sl = entry - 5.0 # Fallback 5 giá
+                    risk = entry - sl # Recalculate
+                    
+                    signal['tp1'] = round(entry + (risk * 1.5), 2)
+                    signal['tp2'] = round(entry + (risk * 2.0), 2)
+                    signal['sl'] = round(sl, 2) # Update lại SL chuẩn
+                    
+                elif "SELL" in order_type:
+                    # SL phải cao hơn Entry
+                    if sl <= entry: sl = entry + 5.0 # Fallback 5 giá
+                    risk = sl - entry # Recalculate
+                    
+                    signal['tp1'] = round(entry - (risk * 1.5), 2)
+                    signal['tp2'] = round(entry - (risk * 2.0), 2)
+                    signal['sl'] = round(sl, 2)
+
+                # Save back
+                result_json['trade_signal'] = signal
+                logger.info(f"⚖️ Enforced R:R 1:2 -> Entry: {entry}, SL: {signal['sl']}, TP2: {signal['tp2']}")
+        # -----------------------------
+
         return result_json
 
     except Exception as e:

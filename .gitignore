@@ -30,3 +30,7 @@ logs/
 # Project Specific
 images/
 data/
+
+# MQL5
+*.ex4
+*.ex5

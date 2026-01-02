@@ -37,7 +37,13 @@ def load_data():
         date_cols = ['open_time', 'close_time']
         for col in date_cols:
             if col in df.columns:
-                df[col] = pd.to_datetime(df[col], errors='coerce')
+                # 1. Chuyển sang datetime (ép kiểu UTC)
+                df[col] = pd.to_datetime(df[col], errors='coerce', utc=True)
+                
+                # 2. Convert sang giờ Việt Nam ('Asia/Ho_Chi_Minh')
+                # Lưu ý: Cần đảm bảo df[col] không bị Null hết
+                if not df[col].isnull().all():
+                     df[col] = df[col].dt.tz_convert('Asia/Ho_Chi_Minh').dt.tz_localize(None)
         
         # Fill missing strategy
         if 'strategy' in df.columns:
@@ -184,20 +190,60 @@ else:
     # --- Data Table Section ---
     st.subheader("📋 Trade History Details")
     
-    # Style text for profit column
-    def color_profit(val):
-        color = 'green' if val > 0 else 'red' if val < 0 else 'black'
-        return f'color: {color}'
+    # 1. Chuẩn bị dữ liệu hiển thị (Copy để không ảnh hưởng data gốc)
+    display_df = df.copy()
     
-    # Selecting relevant columns for display
-    display_cols = ['ticket', 'strategy', 'symbol', 'order_type', 'volume', 'open_price', 'close_price', 'profit', 'status', 'close_reason', 'open_time', 'close_time', 'sl', 'tp']
-    # Filter only existing columns
-    display_cols = [c for c in display_cols if c in df.columns]
+    # Chọn cột cần hiển thị
+    # Chọn thứ tự cột hiển thị (Thêm close_time vào sau open_time)
+    cols = ['ticket', 'open_time', 'close_time', 'symbol', 'order_type', 'volume', 'open_price', 'sl', 'tp', 'close_price', 'profit', 'close_reason']
+    # Lọc những cột thực sự tồn tại trong data
+    final_cols = [c for c in cols if c in display_df.columns]
     
+    # 2. Logic Tô màu cho Profit (Pandas Styler)
+    def highlight_profit(val):
+        try:
+            val = float(val) # Ensure numeric
+            color = '#00c853' if val > 0 else '#d50000' if val < 0 else 'inherit' # Xanh lá đậm / Đỏ đậm
+            font_weight = 'bold' if val != 0 else 'normal'
+            return f'color: {color}; font-weight: {font_weight}'
+        except:
+            return ''
+
+    # 3. Cấu hình Column Config (Streamlit UI)
+    column_cfg = {
+        "ticket": st.column_config.NumberColumn("Ticket", format="%d", width="medium"),
+        
+        # --- CẬP NHẬT 2 CỘT THỜI GIAN ---
+        "open_time": st.column_config.DatetimeColumn(
+            "Open Time", 
+            format="YYYY/DD/MM HH:mm", 
+            width="medium"
+        ),
+        "close_time": st.column_config.DatetimeColumn(
+            "Close Time", 
+            format="YYYY/DD/MM HH:mm", 
+            width="medium"
+        ),
+        # --------------------------------
+        
+        "symbol": st.column_config.TextColumn("Symbol", width="small"),
+        "order_type": st.column_config.TextColumn("Type", width="small"),
+        "volume": st.column_config.NumberColumn("Vol", format="%.2f", width="small"),
+        "open_price": st.column_config.NumberColumn("Entry", format="%.2f"),
+        "sl": st.column_config.NumberColumn("SL", format="%.2f"),
+        "tp": st.column_config.NumberColumn("TP", format="%.2f"),
+        "close_price": st.column_config.NumberColumn("Exit", format="%.2f"),
+        "profit": st.column_config.NumberColumn("Profit", format="$%.2f", width="medium"),
+        "close_reason": st.column_config.TextColumn("Reason", width="medium"),
+    }
+
+    # 4. Render Dataframe
     st.dataframe(
-        df[display_cols].style.applymap(color_profit, subset=['profit']),
+        display_df[final_cols].style.applymap(highlight_profit, subset=['profit']),
+        column_config=column_cfg,
         use_container_width=True,
-        height=500
+        hide_index=True,
+        height=600
     )
 
     # Auto-refresh hint
