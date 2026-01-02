@@ -1,9 +1,16 @@
-
+# --- Imports ---
 import streamlit as st
 import pandas as pd
 import sqlite3
 import os
 import plotly.express as px
+import asyncio
+import sys
+
+# Ensure app modules are accessible
+sys.path.append(os.getcwd())
+from app.core import database
+from app.services.mt5_bridge import MT5DataClient
 
 # --- Configuration ---
 DB_PATH = os.path.join("data", "xauusd_news.db")
@@ -62,13 +69,77 @@ def load_data():
         st.error(f"Error loading data: {e}")
         return pd.DataFrame()
 
+# --- Helper: Sync Logic (Reused from script) ---
+async def run_sync_process():
+    status_text = st.empty()
+    progress_bar = st.progress(0)
+    
+    try:
+        status_text.text("⏳ Connecting to Database...")
+        # 1. Get Closed Trades
+        trades = []
+        async with database.get_db_connection() as conn:
+            async with conn.execute("SELECT ticket FROM trade_history WHERE status='CLOSED'") as cursor:
+                rows = await cursor.fetchall()
+                trades = [row['ticket'] for row in rows]
+        
+        total = len(trades)
+        if total == 0:
+            status_text.text("✅ No closed trades to sync.")
+            progress_bar.progress(100)
+            return
+
+        status_text.text(f"⏳ Syncing {total} trades with MT5...")
+        client = MT5DataClient()
+        
+        updated = 0
+        for i, ticket in enumerate(trades):
+            # Fetch from MT5
+            data = await client.get_trade_history(ticket)
+            if data:
+                # Update DB
+                await database.sync_trade_data(
+                    ticket=ticket,
+                    open_price=data.get('open_price', 0.0),
+                    close_price=data.get('close_price', 0.0),
+                    profit=data.get('profit', 0.0),
+                    sl=data.get('sl', 0.0),
+                    tp=data.get('tp', 0.0),
+                    open_time=data.get('open_time', 0),
+                    close_time=data.get('close_time', 0)
+                )
+                updated += 1
+            
+            # Update Progress
+            prog = int((i + 1) / total * 100)
+            progress_bar.progress(min(prog, 100))
+            
+        status_text.success(f"✅ Sync Complete! Updated {updated}/{total} trades.")
+        
+    except Exception as e:
+        status_text.error(f"❌ Sync Failed: {e}")
+    finally:
+        await asyncio.sleep(1) # Chờ 1 chút để user đọc thông báo
+        status_text.empty()
+        progress_bar.empty()
+
 # --- Main Layout ---
 st.title(PAGE_TITLE)
 
-# Refresh Button
-if st.button("🔄 Refresh Data"):
-    st.cache_data.clear() # Clear cache if implemented, or just rerun
-    st.rerun()
+# Action Buttons
+col_btn1, col_btn2 = st.columns([1, 5])
+
+with col_btn1:
+    if st.button("🔄 Refresh Data"):
+        st.cache_data.clear()
+        st.rerun()
+
+with col_btn2:
+    if st.button("cloud_download Sync from MT5"):
+        # Run Async Sync Loop
+        asyncio.run(run_sync_process())
+        st.cache_data.clear() # Clear cache after sync
+        st.rerun()
 
 # Load Data
 df = load_data()
@@ -195,7 +266,7 @@ else:
     
     # Chọn cột cần hiển thị
     # Chọn thứ tự cột hiển thị (Thêm close_time vào sau open_time)
-    cols = ['ticket', 'open_time', 'close_time', 'symbol', 'order_type', 'volume', 'open_price', 'sl', 'tp', 'close_price', 'profit', 'close_reason']
+    cols = ['ticket', 'open_time', 'close_time', 'symbol', 'order_type', 'strategy', 'volume', 'open_price', 'sl', 'tp', 'close_price', 'profit', 'close_reason']
     # Lọc những cột thực sự tồn tại trong data
     final_cols = [c for c in cols if c in display_df.columns]
     
@@ -228,6 +299,15 @@ else:
         
         "symbol": st.column_config.TextColumn("Symbol", width="small"),
         "order_type": st.column_config.TextColumn("Type", width="small"),
+        
+        # --- THÊM CẤU HÌNH STRATEGY ---
+        "strategy": st.column_config.TextColumn(
+            "Strategy", 
+            width="small",
+            help="NEWS: Tin tức | SNIPER: Bắn tỉa | REPORT: Daily Report | CALENDAR: Lịch kinh tế"
+        ),
+        # -----------------------------
+        
         "volume": st.column_config.NumberColumn("Vol", format="%.2f", width="small"),
         "open_price": st.column_config.NumberColumn("Entry", format="%.2f"),
         "sl": st.column_config.NumberColumn("SL", format="%.2f"),
