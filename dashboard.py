@@ -194,7 +194,8 @@ else:
     display_df = df.copy()
     
     # Chọn cột cần hiển thị
-    cols = ['ticket', 'open_time', 'symbol', 'order_type', 'volume', 'open_price', 'sl', 'tp', 'close_price', 'profit', 'close_reason']
+    # Chọn thứ tự cột hiển thị (Thêm close_time vào sau open_time)
+    cols = ['ticket', 'open_time', 'close_time', 'symbol', 'order_type', 'volume', 'open_price', 'sl', 'tp', 'close_price', 'profit', 'close_reason']
     # Lọc những cột thực sự tồn tại trong data
     final_cols = [c for c in cols if c in display_df.columns]
     
@@ -210,32 +211,29 @@ else:
 
     # 3. Cấu hình Column Config (Streamlit UI)
     column_cfg = {
-        "ticket": st.column_config.NumberColumn(
-            "Ticket", 
-            format="%d", # Không dấu phẩy
-            width="medium"
-        ),
+        "ticket": st.column_config.NumberColumn("Ticket", format="%d", width="medium"),
+        
+        # --- CẬP NHẬT 2 CỘT THỜI GIAN ---
         "open_time": st.column_config.DatetimeColumn(
-            "Time", 
-            format="DD/MM HH:mm", # Format ngắn gọn
+            "Open Time", 
+            format="DD/MM HH:mm", 
             width="medium"
         ),
+        "close_time": st.column_config.DatetimeColumn(
+            "Close Time", 
+            format="DD/MM HH:mm", 
+            width="medium"
+        ),
+        # --------------------------------
+        
         "symbol": st.column_config.TextColumn("Symbol", width="small"),
         "order_type": st.column_config.TextColumn("Type", width="small"),
-        "volume": st.column_config.NumberColumn(
-            "Vol", 
-            format="%.2f",
-            width="small"
-        ),
+        "volume": st.column_config.NumberColumn("Vol", format="%.2f", width="small"),
         "open_price": st.column_config.NumberColumn("Entry", format="%.2f"),
         "sl": st.column_config.NumberColumn("SL", format="%.2f"),
         "tp": st.column_config.NumberColumn("TP", format="%.2f"),
         "close_price": st.column_config.NumberColumn("Exit", format="%.2f"),
-        "profit": st.column_config.NumberColumn(
-            "Profit",
-            format="$%.2f", # Tiền tệ
-            width="medium"
-        ),
+        "profit": st.column_config.NumberColumn("Profit", format="$%.2f", width="medium"),
         "close_reason": st.column_config.TextColumn("Reason", width="medium"),
     }
 
