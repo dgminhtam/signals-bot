@@ -216,12 +216,12 @@ else:
         # --- CẬP NHẬT 2 CỘT THỜI GIAN ---
         "open_time": st.column_config.DatetimeColumn(
             "Open Time", 
-            format="DD/MM HH:mm", 
+            format="YYYY/DD/MM HH:mm", 
             width="medium"
         ),
         "close_time": st.column_config.DatetimeColumn(
             "Close Time", 
-            format="DD/MM HH:mm", 
+            format="YYYY/DD/MM HH:mm", 
             width="medium"
         ),
         # --------------------------------
