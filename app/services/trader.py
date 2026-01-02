@@ -468,24 +468,43 @@ class AutoTrader:
 
     async def cleanup_pending_orders(self, tickets: List[str]):
         """
-        Xóa các lệnh pending chưa khớp theo danh sách ticket.
+        Cơ chế OCO: Kiểm tra xem có lệnh nào khớp chưa.
+        - Nếu khớp 1 -> Xóa lệnh còn lại.
+        - Nếu chưa khớp -> Xóa hết.
         """
-        logger.info(f"🧹 Clearing Pending Orders: {tickets}")
+        logger.info(f"🧹 Checking Trap Outcome for tickets: {tickets}")
+        
+        # 1. Check trạng thái hiện tại
+        current_positions = await self.client.get_open_positions(self.symbol)
+        open_ticket_ids = [str(p['ticket']) for p in current_positions]
+        
+        triggered = False
         for t in tickets:
-            if not t: continue
-            try:
-                ticket_int = int(t)
-                res = await self.client.delete_order(ticket_int)
-                logger.info(f"   -> Delete #{t}: {res}")
+            if str(t) in open_ticket_ids:
+                triggered = True
+                logger.info(f"   🚀 Trap Triggered! Ticket #{t} is active.")
+                break
+        
+        # 2. Xử lý
+        for t in tickets:
+            ticket_str = str(t)
+            
+            # Nếu đã khớp lệnh này -> Skip (không xóa)
+            if ticket_str in open_ticket_ids:
+                continue
                 
-                # Update DB status to CANCELLED instead of keeping it OPEN
+            # Xóa các lệnh còn lại (Pending)
+            try:
+                ticket_int = int(ticket_str)
+                res = await self.client.delete_order(ticket_int)
+                
+                # Chỉ log update DB nếu xóa thành công
                 if "SUCCESS" in res:
+                    reason = "OCO_CANCEL" if triggered else "STRADDLE_EXPIRED"
+                    logger.info(f"   🗑️ Deleting Pending #{t} ({reason})...")
                     await database.update_trade_exit(
-                        ticket=ticket_int,
-                        close_price=0.0,
-                        profit=0.0,
-                        status='CANCELLED',
-                        close_reason='STRADDLE_EXPIRED'
+                        ticket=ticket_int, close_price=0.0, profit=0.0,
+                        status='CANCELLED', close_reason=reason
                     )
             except Exception as e:
                 logger.error(f"   ❌ Error deleting #{t}: {e}")
