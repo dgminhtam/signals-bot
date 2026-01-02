@@ -376,11 +376,7 @@ class AutoTrader:
         Đặt 2 lệnh chờ (Buy Stop / Sell Stop) cách giá hiện tại một khoảng distance.
         Strategy: News Straddle / Trap Trading.
         
-        """
-        if not config.ENABLE_STRATEGY_CALENDAR:
-             logger.warning("   🛑 STRATEGY_CALENDAR is DISABLED. Skipping Straddle setup.")
-             return []
-
+        
         Args:
             distance: USD price distance from current (default: config.TRADE_CALENDAR_DIST)
             sl: Stop loss in USD (default: config.TRADE_CALENDAR_SL)
