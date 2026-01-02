@@ -72,21 +72,24 @@ class AutoTrader:
             logger.error(f"Error checking conflict: {e}")
             return False  # Assume no conflict on error to avoid blocking, or True to be safe? Default False for now.
 
-    async def close_all_positions(self, symbol: str, reason: str = "STRATEGY_EXIT") -> bool:
+    async def close_all_positions(self, symbol: str, reason: str = "STRATEGY_EXIT", except_type: str = None) -> bool:
         """
-        Đóng TẤT CẢ lệnh của symbol (Async).
-        Trả về True nếu sạch lệnh, False nếu vẫn còn.
+        Đóng lệnh của symbol, trừ loại lệnh trong except_type.
         """
-        logger.info(f"🛡️ DEFENSIVE MODE: Closing ALL positions for {symbol} (Reason: {reason})...")
+        logger.info(f"🛡️ DEFENSIVE MODE: Closing positions for {symbol} (Reason: {reason}, Except: {except_type})...")
         
         # 1. Get List
         positions = await self.client.get_open_positions(symbol)
         if not positions:
-            logger.info("   -> No open positions found.")
             return True
             
         # 2. Close Loop
         for pos in positions:
+            # Giữ lại lệnh cùng chiều
+            if except_type and pos['type'] == except_type:
+                logger.info(f"   -> Keeping #{pos['ticket']} ({pos['type']}) - Matches Signal.")
+                continue
+
             ticket = pos['ticket']
             logger.info(f"   -> Closing Ticket #{ticket} ({pos['type']})...")
             
@@ -106,11 +109,14 @@ class AutoTrader:
         # 3. Double Check
         await asyncio.sleep(1.0) # Wait for MT5 update
         remaining = await self.client.get_open_positions(symbol)
-        if remaining:
-            logger.error(f"   ❌ WARNING: {len(remaining)} positions still open!")
+        
+        # Chỉ coi là thất bại nếu còn lệnh KHÁC except_type
+        unwanted = [p for p in remaining if not (except_type and p['type'] == except_type)]
+        
+        if unwanted:
+            logger.error(f"   ❌ WARNING: {len(unwanted)} unwanted positions still open!")
             return False
             
-        logger.info("   ✅ All positions closed successfully.")
         return True
         
     async def analyze_and_trade(self):
@@ -302,7 +308,7 @@ class AutoTrader:
         # ===== STEP 2: DEFENSIVE =====
         is_safe = True
         if score >= 8:
-            is_safe = await self.close_all_positions(self.symbol, reason="NEWS_DEFENSE")
+            is_safe = await self.close_all_positions(self.symbol, reason="NEWS_DEFENSE", except_type=signal_direction)
             if not is_safe:
                 logger.critical("⛔ CRITICAL: FAILED TO CLOSE POSITIONS! ABORTING ENTRY!")
                 return 
