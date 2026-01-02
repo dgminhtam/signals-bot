@@ -37,6 +37,14 @@ async def main():
 
             # Pre-filter
             title_lower = article['title'].lower()
+
+            # --- BLACKLIST FILTER: Loại bỏ tin không liên quan ---
+            ignore_keywords = ["eur", "gbp", "jpy", "aud", "nzd", "cad", "ecb", "boe", "boj", "rba", "oil", "crypto", "btc", "eth"]
+            if any(k in title_lower for k in ignore_keywords):
+                logger.debug(f"   -> SKIP: Tin chứa từ khóa ngoại lai ({article['title']})")
+                continue
+            # ---------------------------------------------------
+
             urgent_keywords = ["cpi", "fed", "rate", "hike", "cut", "war", "explosion", 
                                "surprise", "jump", "plunge", "miss", "beat", "non-farm", "nfp", "pmi", "gdp",
                                "unemployment", "inflation", "biden", "trump", "powell"]
