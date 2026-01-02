@@ -365,6 +365,10 @@ class AutoTrader:
             tp: Take profit in USD (default: config.TRADE_CALENDAR_TP)
             volume: Trading volume (default: config.TRADE_CALENDAR_VOLUME)
         """
+        if not config.ENABLE_STRATEGY_CALENDAR:
+             logger.warning("   🛑 STRATEGY_CALENDAR is DISABLED. Skipping Straddle setup.")
+             return []
+
         # Use CALENDAR config defaults if not provided
         distance = distance if distance is not None else config.TRADE_CALENDAR_DIST
         sl = sl if sl is not None else config.TRADE_CALENDAR_SL
