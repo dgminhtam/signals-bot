@@ -176,6 +176,11 @@ class AutoTrader:
             
             # CASE A: NEWS SIGNAL
             if source == 'NEWS':
+                if not config.ENABLE_STRATEGY_NEWS:
+                     logger.info("   ⛔ Strategy NEWS is DISABLED. Skipping.")
+                     await database.mark_signal_processed(signal_id)
+                     continue
+
                 df, _ = await get_market_data(self.symbol)
                 if df is None or df.empty:
                     logger.error("❌ Failed to get market price for News Order.")
@@ -213,6 +218,11 @@ class AutoTrader:
             
             # CASE B: AI REPORT SIGNAL
             elif source == 'AI_REPORT':
+                if not config.ENABLE_STRATEGY_REPORT:
+                     logger.info("   ⛔ Strategy REPORT is DISABLED. Skipping.")
+                     await database.mark_signal_processed(signal_id)
+                     continue
+
                 # Check News Constraints only for AI signals? (Optional, kept from original logic)
                 upcoming_news = await database.check_upcoming_high_impact_news(minutes=30)
                 if upcoming_news:
@@ -288,6 +298,10 @@ class AutoTrader:
         """
         Xử lý phản ứng với tin tức (Async)
         """
+        if not config.ENABLE_STRATEGY_NEWS:
+            logger.info("⛔ Strategy NEWS is DISABLED globally. Ignoring event.")
+            return
+
         score = news_data.get('score', 0)
         trend = news_data.get('trend', 'NEUTRAL').upper()
         title = news_data.get('title', 'News Event')
@@ -322,34 +336,37 @@ class AutoTrader:
 
         # ===== STEP 3: OFFENSIVE (Sniper Entry) =====
         if score >= 8:
-            logger.info(f"⚔️ [OFFENSIVE] High Impact News detected (Score {score}). Preparing Sniper Entry (Fire-and-Forget)...")
-            
-            # Use SNIPER config and convert to MT5 Points
-            sl_points = self._get_points(config.TRADE_SNIPER_SL)
-            tp_points = self._get_points(config.TRADE_SNIPER_TP)
-            
-            logger.info(f"🚀 SNIPER EXECUTION: {signal_direction} (SL: {config.TRADE_SNIPER_SL} USD / {sl_points} pts, TP: {config.TRADE_SNIPER_TP} USD / {tp_points} pts)")
-            
-            # Call relative execution immediately (Use SNIPER volume)
-            response = await self._retry_action(
-                self.client.execute_order_relative, 
-                self.symbol, signal_direction, config.TRADE_SNIPER_VOLUME, sl_points, tp_points
-            )
-            
-            logger.info(f"   -> Sniper Result: {response}")
-            
-            # Save to Database
-            if "SUCCESS" in response:
-                try:
-                    ticket = int(response.split("|")[1])
-                    # For relative orders, we don't have exact prices yet, save as 0
-                    await database.save_trade_entry(
-                        ticket, None, self.symbol, signal_direction,
-                        config.TRADE_SNIPER_VOLUME, 0.0, sl_points, tp_points,
-                        strategy='SNIPER'
-                    )
-                except Exception as e:
-                    logger.error(f"❌ Failed to save SNIPER trade to DB: {e}")
+            if not config.ENABLE_STRATEGY_SNIPER:
+                logger.info("   🛡️ Sniper Strategy is DISABLED. Skipping offensive entry.")
+            else:
+                logger.info(f"⚔️ [OFFENSIVE] High Impact News detected (Score {score}). Preparing Sniper Entry (Fire-and-Forget)...")
+                
+                # Use SNIPER config and convert to MT5 Points
+                sl_points = self._get_points(config.TRADE_SNIPER_SL)
+                tp_points = self._get_points(config.TRADE_SNIPER_TP)
+                
+                logger.info(f"🚀 SNIPER EXECUTION: {signal_direction} (SL: {config.TRADE_SNIPER_SL} USD / {sl_points} pts, TP: {config.TRADE_SNIPER_TP} USD / {tp_points} pts)")
+                
+                # Call relative execution immediately (Use SNIPER volume)
+                response = await self._retry_action(
+                    self.client.execute_order_relative, 
+                    self.symbol, signal_direction, config.TRADE_SNIPER_VOLUME, sl_points, tp_points
+                )
+                
+                logger.info(f"   -> Sniper Result: {response}")
+                
+                # Save to Database
+                if "SUCCESS" in response:
+                    try:
+                        ticket = int(response.split("|")[1])
+                        # For relative orders, we don't have exact prices yet, save as 0
+                        await database.save_trade_entry(
+                            ticket, None, self.symbol, signal_direction,
+                            config.TRADE_SNIPER_VOLUME, 0.0, sl_points, tp_points,
+                            strategy='SNIPER'
+                        )
+                    except Exception as e:
+                        logger.error(f"❌ Failed to save SNIPER trade to DB: {e}")
             
         else:
             logger.info(f"   -> Score {score} < 8. No automated entry.")
@@ -359,6 +376,11 @@ class AutoTrader:
         Đặt 2 lệnh chờ (Buy Stop / Sell Stop) cách giá hiện tại một khoảng distance.
         Strategy: News Straddle / Trap Trading.
         
+        """
+        if not config.ENABLE_STRATEGY_CALENDAR:
+             logger.warning("   🛑 STRATEGY_CALENDAR is DISABLED. Skipping Straddle setup.")
+             return []
+
         Args:
             distance: USD price distance from current (default: config.TRADE_CALENDAR_DIST)
             sl: Stop loss in USD (default: config.TRADE_CALENDAR_SL)

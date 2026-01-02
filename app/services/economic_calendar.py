@@ -323,25 +323,28 @@ class EconomicCalendarService:
                 await database.update_event_status(event['id'], 'post_notified')
 
             # --- TRAP TRADING (STRADDLE) ---
-            # Check for High Impact USD news in 2 minutes
-            trap_events = await database.get_events_for_trap(min_minutes=1.5, max_minutes=2.5)
-            if trap_events:
-                logger.info(f"⏰ Pre-News Alert! {len(trap_events)} High Impact USD event(s) in ~2 mins.")
-                for ev in trap_events:
-                    logger.info(f"   -> Setup Trap for: {ev['title']}")
-                
-                # Activate AutoTrader Trap
-                try:
-                    trader = AutoTrader("XAUUSD") # Default XAUUSD for News Trap
-                    # Use centralized CALENDAR config (no parameters = use defaults)
-                    tickets = await trader.place_straddle_orders()
+            if config.ENABLE_STRATEGY_CALENDAR:
+                # Check for High Impact USD news in 2 minutes
+                trap_events = await database.get_events_for_trap(min_minutes=1.5, max_minutes=2.5)
+                if trap_events:
+                    logger.info(f"⏰ Pre-News Alert! {len(trap_events)} High Impact USD event(s) in ~2 mins.")
+                    for ev in trap_events:
+                        logger.info(f"   -> Setup Trap for: {ev['title']}")
                     
-                    if tickets:
-                        logger.info(f"   ✅ Trap Placed: {tickets}. Scheduling cleanup in 15m.")
-                        # Schedule Cleanup Task (Fire & Forget)
-                        asyncio.create_task(self._schedule_cleanup(trader, tickets, delay=15*60))
-                except Exception as e:
-                    logger.error(f"   ❌ Trap Setup Failed: {e}")
+                    # Activate AutoTrader Trap
+                    try:
+                        trader = AutoTrader("XAUUSD") # Default XAUUSD for News Trap
+                        # Use centralized CALENDAR config (no parameters = use defaults)
+                        tickets = await trader.place_straddle_orders()
+                        
+                        if tickets:
+                            logger.info(f"   ✅ Trap Placed: {tickets}. Scheduling cleanup in 15m.")
+                            # Schedule Cleanup Task (Fire & Forget)
+                            asyncio.create_task(self._schedule_cleanup(trader, tickets, delay=15*60))
+                    except Exception as e:
+                        logger.error(f"   ❌ Trap Setup Failed: {e}")
+            else:
+                 logger.debug("   ⏸️ Calendar Strategy (Trap) is DISABLED.")
                     
         except Exception as e:
             logger.error(f"Error in process_calendar_alerts: {e}")
