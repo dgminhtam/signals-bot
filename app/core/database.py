@@ -860,7 +860,7 @@ async def get_events_for_trap(min_minutes: float = 1.6, max_minutes: float = 2.4
 
     """
 
-    Lấy các tin USD High Impact sắp ra trong khoảng [min, max] phút tới.
+    Lấy các tin High Impact sắp ra trong khoảng [min, max] phút tới.
 
     Mục đích: Trap Trading (Straddle).
 
@@ -894,9 +894,7 @@ async def get_events_for_trap(min_minutes: float = 1.6, max_minutes: float = 2.4
 
                 SELECT * FROM economic_events
 
-                WHERE currency = 'USD'
-
-                AND impact = 'High'
+                WHERE impact = 'High'
 
                 AND status = 'pre_notified'
 

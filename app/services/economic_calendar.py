@@ -110,8 +110,8 @@ class EconomicCalendarService:
                     if impact != 'High': 
                         continue
 
-                    # --- NEW: Chỉ lấy tin USD ---
-                    if currency != 'USD':
+                    # --- DYNAMIC CURRENCY FILTER ---
+                    if currency not in config.INTERESTED_CURRENCIES:
                         continue
                     # ----------------------------
 

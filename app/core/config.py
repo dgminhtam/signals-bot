@@ -137,6 +137,22 @@ WORDPRESS_APP_PASSWORD = os.getenv("WORDPRESS_APP_PASSWORD")
 WORDPRESS_LIVEBLOG_ID = os.getenv("WORDPRESS_LIVEBLOG_ID", "13092")  # ID của bài liveblog gốc
 
 # --- TRADING CONFIG ---
+_symbols_str = os.getenv("TRADING_SYMBOLS", "XAUUSD")
+TRADING_SYMBOLS = [s.strip().upper() for s in _symbols_str.split(',') if s.strip()]
+
+# Tự động suy luận các đồng tiền cần theo dõi từ cặp tiền
+# VD: ["XAUUSD", "EURUSD"] -> Set("USD", "EUR") (XAU bỏ qua hoặc coi là hàng hóa, nhưng tin USD ảnh hưởng nó)
+INTERESTED_CURRENCIES = set()
+for sym in TRADING_SYMBOLS:
+    if len(sym) == 6:
+        INTERESTED_CURRENCIES.add(sym[:3])
+        INTERESTED_CURRENCIES.add(sym[3:])
+    elif "XAU" in sym:
+        INTERESTED_CURRENCIES.add("USD") # Gold chạy theo USD
+
+logger.info(f"📋 Trading Symbols: {TRADING_SYMBOLS}")
+logger.info(f"🌍 Interested Currencies: {INTERESTED_CURRENCIES}")
+
 # Global default volume (fallback for all strategies)
 TRADE_VOLUME = float(os.getenv("TRADE_VOLUME", "0.01"))
 
